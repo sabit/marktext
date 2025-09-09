@@ -1306,3 +1306,10 @@ i.ag-footnote-backlink {
   cursor: pointer;
   z-index: 100;
 }
+
+h1 { margin-left: 0; }
+h2 { margin-left: 1em; }
+h3 { margin-left: 2em; }
+h4 { margin-left: 3em; }
+h5 { margin-left: 4em; }
+h6 { margin-left: 5em; }

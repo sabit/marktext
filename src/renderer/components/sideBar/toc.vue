@@ -32,15 +32,36 @@ export default {
     return {
       defaultProps: {
         children: 'children',
-        label: 'label'
+        label: 'numberedLabel'
       }
     }
   },
   computed: {
     ...mapState({
-      toc: state => state.editor.toc,
+      rawToc: state => state.editor.toc,
       wordWrapInToc: state => state.preferences.wordWrapInToc
-    })
+    }),
+    toc () {
+      // Helper to recursively number headings
+      // Correct hierarchical numbering for TOC
+      const numberHeadings = (nodes, parentCounters = []) => {
+        let result = []
+        nodes.forEach((node, idx) => {
+          const level = node.level || 1
+          let counters = parentCounters.slice(0, level - 1)
+          counters.push(idx + 1)
+          const labelPrefix = counters.join('.')
+          const numberedLabel = `${labelPrefix}. ${node.label}`
+          let children = []
+          if (node.children && node.children.length) {
+            children = numberHeadings(node.children, counters)
+          }
+          result.push({ ...node, numberedLabel, children })
+        })
+        return result
+      }
+      return numberHeadings(this.rawToc, [])
+    }
   },
   methods: {
     handleClick ({ slug }) {
