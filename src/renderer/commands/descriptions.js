@@ -63,6 +63,7 @@ const commandDescriptions = Object.freeze({
   'format.superscript': 'Format: Superscript',
   'format.subscript': 'Format: Subscript',
   'format.highlight': 'Format: Highlight',
+  'format.filepath': 'Format: Insert File Path',
   'format.inline-code': 'Format: Inline Code',
   'format.inline-math': 'Format: Inline Math',
   'format.strike': 'Format: Strike',

@@ -1,18 +1,18 @@
-import { clipboard, ipcRenderer, shell, webFrame } from 'electron'
-import path from 'path'
-import equal from 'fast-deep-equal'
 import { isSamePathSync } from 'common/filesystem/paths'
+import { clipboard, ipcRenderer, shell, webFrame } from 'electron'
+import equal from 'fast-deep-equal'
+import path from 'path'
 import bus from '../bus'
-import { hasKeys, getUniqueId } from '../util'
-import listToTree from '../util/listToTree'
-import { createDocumentState, getOptionsFromState, getSingleFileState, getBlankFileState } from './help'
-import notice from '../services/notification'
 import {
-  FileEncodingCommand,
-  LineEndingCommand,
-  QuickOpenCommand,
-  TrailingNewlineCommand
+    FileEncodingCommand,
+    LineEndingCommand,
+    QuickOpenCommand,
+    TrailingNewlineCommand
 } from '../commands'
+import notice from '../services/notification'
+import { getUniqueId, hasKeys } from '../util'
+import listToTree from '../util/listToTree'
+import { createDocumentState, getBlankFileState, getOptionsFromState, getSingleFileState } from './help'
 
 const autoSaveTimers = new Map()
 
@@ -1191,6 +1191,10 @@ const actions = {
 
   ASK_FOR_IMAGE_PATH ({ commit }) {
     return ipcRenderer.sendSync('mt::ask-for-image-path')
+  },
+
+  ASK_FOR_FILE_PATH ({ commit }) {
+    return ipcRenderer.sendSync('mt::ask-for-file-path')
   },
 
   LISTEN_WINDOW_ZOOM ({ dispatch, rootState }) {

@@ -1,10 +1,10 @@
 // List of all static commands that are loaded into command center.
-import { ipcRenderer, shell } from 'electron'
-import { getCurrentWindow } from '@electron/remote'
-import bus from '../bus'
 import { delay, isOsx } from '@/util'
-import { isUpdatable } from './utils'
+import { getCurrentWindow } from '@electron/remote'
+import { ipcRenderer, shell } from 'electron'
+import bus from '../bus'
 import getCommandDescriptionById from './descriptions'
+import { isUpdatable } from './utils'
 
 export { default as FileEncodingCommand } from './fileEncoding'
 export { default as LineEndingCommand } from './lineEnding'
@@ -384,6 +384,13 @@ const commands = [
     execute: async () => {
       focusEditorAndExecute(
         () => bus.$emit('format', 'mark')
+      )
+    }
+  }, {
+    id: 'format.filepath',
+    execute: async () => {
+      focusEditorAndExecute(
+        () => bus.$emit('insert-filepath')
       )
     }
   }, {

@@ -36,6 +36,9 @@ const actions = {
     ipcRenderer.on('mt::editor-format-action', (e, { type }) => {
       bus.$emit('format', type)
     })
+    ipcRenderer.on('mt::editor-insert-filepath', () => {
+      bus.$emit('insert-filepath')
+    })
   }
 }
 

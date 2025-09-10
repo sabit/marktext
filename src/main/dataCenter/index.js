@@ -1,13 +1,13 @@
-import fs from 'fs'
-import path from 'path'
-import EventEmitter from 'events'
-import { BrowserWindow, ipcMain, dialog } from 'electron'
-import keytar from 'keytar'
-import schema from './schema'
-import Store from 'electron-store'
-import log from 'electron-log'
 import { ensureDirSync } from 'common/filesystem'
 import { IMAGE_EXTENSIONS } from 'common/filesystem/paths'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
+import log from 'electron-log'
+import Store from 'electron-store'
+import EventEmitter from 'events'
+import fs from 'fs'
+import keytar from 'keytar'
+import path from 'path'
+import schema from './schema'
 
 const DATA_CENTER_NAME = 'dataCenter'
 
@@ -190,6 +190,24 @@ class DataCenter extends EventEmitter {
         filters: [{
           name: 'Images',
           extensions: IMAGE_EXTENSIONS
+        }]
+      })
+
+      if (filePaths && filePaths[0]) {
+        e.returnValue = filePaths[0]
+      } else {
+        e.returnValue = ''
+      }
+    })
+
+    // File path selection for filepath tag
+    ipcMain.on('mt::ask-for-file-path', async e => {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      const { filePaths } = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        filters: [{
+          name: 'All Files',
+          extensions: ['*']
         }]
       })
 

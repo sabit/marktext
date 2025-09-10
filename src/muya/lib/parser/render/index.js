@@ -1,10 +1,10 @@
-import loadRenderer from '../../renderers'
 import { CLASS_OR_ID, PREVIEW_DOMPURIFY_CONFIG } from '../../config'
-import { conflict, mixins, camelToSnake, sanitize } from '../../utils'
-import { patch, toVNode, toHTML, h } from './snabbdom'
+import loadRenderer from '../../renderers'
+import { camelToSnake, conflict, mixins, sanitize } from '../../utils'
 import { beginRules } from '../rules'
-import renderInlines from './renderInlines'
 import renderBlock from './renderBlock'
+import renderInlines from './renderInlines'
+import { h, patch, toHTML, toVNode } from './snabbdom'
 
 class StateRender {
   constructor (muya) {
@@ -253,6 +253,37 @@ class StateRender {
       imageInfo.touchMsec = Date.now()
       this.loadImageMap.set(key, imageInfo)
     })
+  }
+
+  // Helper method to extract text content from token children
+  getChildrenText (children) {
+    if (!children || !Array.isArray(children)) return ''
+
+    return children.reduce((text, child) => {
+      if (child.type === 'text') {
+        return text + child.content
+      } else if (child.children) {
+        return text + this.getChildrenText(child.children)
+      }
+      return text
+    }, '')
+  }
+
+  // Helper method to determine file type from filename
+  getFileType (filename) {
+    if (!filename) return 'unknown'
+
+    const ext = filename.split('.').pop().toLowerCase()
+
+    // Document types
+    if (['pdf'].includes(ext)) return 'pdf'
+    if (['doc', 'docx'].includes(ext)) return 'docx'
+    if (['xls', 'xlsx'].includes(ext)) return 'xlsx'
+
+    // Image types
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'svg', 'webp'].includes(ext)) return 'image'
+
+    return 'unknown'
   }
 }
 

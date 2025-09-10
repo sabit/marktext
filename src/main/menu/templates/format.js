@@ -55,6 +55,13 @@ export default function (keybindings) {
         actions.highlight(focusedWindow)
       }
     }, {
+      id: 'filepathMenuItem',
+      label: 'Insert File Path',
+      accelerator: keybindings.getAccelerator('format.filepath'),
+      click (menuItem, focusedWindow) {
+        actions.filepath(focusedWindow)
+      }
+    }, {
       type: 'separator'
     }, {
       id: 'inlineCodeMenuItem',

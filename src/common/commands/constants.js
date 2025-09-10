@@ -40,6 +40,7 @@ const COMMANDS = Object.freeze({
   FORMAT_CLEAR_FORMAT: 'format.clear-format',
   FORMAT_EMPHASIS: 'format.emphasis',
   FORMAT_HIGHLIGHT: 'format.highlight',
+  FORMAT_FILEPATH: 'format.filepath',
   FORMAT_HYPERLINK: 'format.hyperlink',
   FORMAT_IMAGE: 'format.image',
   FORMAT_INLINE_CODE: 'format.inline-code',

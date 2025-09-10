@@ -213,6 +213,10 @@ export const FORMAT_MARKER_MAP = Object.freeze({
   mark: {
     open: '<mark>',
     close: '</mark>'
+  },
+  filepath: {
+    open: '<filepath>',
+    close: '</filepath>'
   }
 })
 

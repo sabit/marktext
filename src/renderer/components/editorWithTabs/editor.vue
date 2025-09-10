@@ -572,6 +572,7 @@ export default {
       bus.$on('print-service-clearup', this.handlePrintServiceClearup)
       bus.$on('paragraph', this.handleEditParagraph)
       bus.$on('format', this.handleInlineFormat)
+      bus.$on('insert-filepath', this.handleInsertFilepath)
       bus.$on('searchValue', this.handleSearch)
       bus.$on('replaceValue', this.handReplace)
       bus.$on('find-action', this.handleFindAction)
@@ -1059,6 +1060,14 @@ export default {
       this.editor && this.editor.format(type)
     },
 
+    async handleInsertFilepath () {
+      const filePath = await this.$store.dispatch('ASK_FOR_FILE_PATH')
+      if (filePath) {
+        // Insert the filepath tag at the end of the current line
+        this.editor && this.editor.insertFilepath(filePath)
+      }
+    },
+
     handleDialogTableConfirm () {
       this.dialogTableVisible = false
       this.editor && this.editor.createTable(this.tableChecker)
@@ -1126,6 +1135,7 @@ export default {
     bus.$off('print-service-clearup', this.handlePrintServiceClearup)
     bus.$off('paragraph', this.handleEditParagraph)
     bus.$off('format', this.handleInlineFormat)
+    bus.$off('insert-filepath', this.handleInsertFilepath)
     bus.$off('searchValue', this.handleSearch)
     bus.$off('replaceValue', this.handReplace)
     bus.$off('find-action', this.handleFindAction)

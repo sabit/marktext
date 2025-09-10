@@ -1,17 +1,17 @@
-import ContentState from './contentState'
-import EventCenter from './eventHandler/event'
-import MouseEvent from './eventHandler/mouseEvent'
-import Clipboard from './eventHandler/clipboard'
-import Keyboard from './eventHandler/keyboard'
-import DragDrop from './eventHandler/dragDrop'
-import Resize from './eventHandler/resize'
-import ClickEvent from './eventHandler/clickEvent'
-import { CLASS_OR_ID, MUYA_DEFAULT_OPTION } from './config'
-import { wordCount } from './utils'
-import ExportMarkdown from './utils/exportMarkdown'
-import ExportHtml from './utils/exportHtml'
-import ToolTip from './ui/tooltip'
 import './assets/styles/index.css'
+import { CLASS_OR_ID, MUYA_DEFAULT_OPTION } from './config'
+import ContentState from './contentState'
+import ClickEvent from './eventHandler/clickEvent'
+import Clipboard from './eventHandler/clipboard'
+import DragDrop from './eventHandler/dragDrop'
+import EventCenter from './eventHandler/event'
+import Keyboard from './eventHandler/keyboard'
+import MouseEvent from './eventHandler/mouseEvent'
+import Resize from './eventHandler/resize'
+import ToolTip from './ui/tooltip'
+import { wordCount } from './utils'
+import ExportHtml from './utils/exportHtml'
+import ExportMarkdown from './utils/exportMarkdown'
 
 class Muya {
   static plugins = []
@@ -289,6 +289,10 @@ class Muya {
 
   insertImage (imageInfo) {
     this.contentState.insertImage(imageInfo)
+  }
+
+  insertFilepath (filePath) {
+    this.contentState.insertFilepath(filePath)
   }
 
   search (value, opt) {

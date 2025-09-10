@@ -1,4 +1,4 @@
-import { CLASS_OR_ID, BLOCK_TYPE6 } from '../../../config'
+import { BLOCK_TYPE6, CLASS_OR_ID } from '../../../config'
 import { snakeToCamel } from '../../../utils'
 import sanitize, { isValidAttribute } from '../../../utils/dompurify'
 
@@ -26,6 +26,38 @@ export default function htmlTag (h, cursor, block, token, outerClass) {
     }
     case 'br': {
       return [h(`span.${CLASS_OR_ID.AG_HTML_TAG}`, [...openContent, h(tag)])]
+    }
+    case 'filepath': {
+      // Extract filename from content (remove path)
+      const content = token.children ? this.getChildrenText(token.children) : ''
+      const filename = content.split(/[/\\]/).pop() || content
+
+      // Determine file type for styling
+      const fileType = this.getFileType(filename)
+      const fileTypeClass = `ag-filepath-${fileType}`
+
+      return [
+        h(`span.${tagClassName}.${CLASS_OR_ID.AG_OUTPUT_REMOVE}`, {
+          attrs: {
+            spellcheck: 'false'
+          }
+        }, openContent),
+        h(`span.${CLASS_OR_ID.AG_INLINE_RULE}.ag-filepath.${fileTypeClass}`, {
+          attrs: {
+            title: content // Show full path on hover
+          },
+          dataset: {
+            start,
+            end,
+            raw: token.raw
+          }
+        }, filename),
+        h(`span.${tagClassName}.${CLASS_OR_ID.AG_OUTPUT_REMOVE}`, {
+          attrs: {
+            spellcheck: 'false'
+          }
+        }, closeContent)
+      ]
     }
     default:
       // handle void html tag

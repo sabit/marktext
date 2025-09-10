@@ -28,6 +28,12 @@ export const highlight = win => {
   format(win, 'mark')
 }
 
+export const filepath = win => {
+  if (win && win.webContents) {
+    win.webContents.send('mt::editor-insert-filepath')
+  }
+}
+
 export const hyperlink = win => {
   format(win, 'link')
 }
@@ -70,6 +76,7 @@ export const loadFormatCommands = commandManager => {
   commandManager.add(COMMANDS.FORMAT_CLEAR_FORMAT, clearFormat)
   commandManager.add(COMMANDS.FORMAT_EMPHASIS, emphasis)
   commandManager.add(COMMANDS.FORMAT_HIGHLIGHT, highlight)
+  commandManager.add(COMMANDS.FORMAT_FILEPATH, filepath)
   commandManager.add(COMMANDS.FORMAT_HYPERLINK, hyperlink)
   commandManager.add(COMMANDS.FORMAT_IMAGE, image)
   commandManager.add(COMMANDS.FORMAT_INLINE_CODE, inlineCode)
