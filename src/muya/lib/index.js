@@ -125,6 +125,10 @@ class Muya {
     this.eventCenter.dispatch('selectionFormats', formats)
   }
 
+  dispatchUnicodeWarning = (filePath) => {
+    this.eventCenter.dispatch('paste-unicode-warning', filePath)
+  }
+
   getMarkdown () {
     const blocks = this.contentState.getBlocks()
     const { isGitlabCompatibilityEnabled, listIndentation } = this.contentState
@@ -372,6 +376,10 @@ class Muya {
 
   pasteAsPlainText () {
     this.clipboard.pasteAsPlainText()
+  }
+
+  pasteFilePath () {
+    this.clipboard.pasteFilePath()
   }
 
   /**

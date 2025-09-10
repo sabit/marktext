@@ -36,6 +36,7 @@ export default new Map([
   ['edit.copy-as-markdown', 'Ctrl+Shift+C'],
   ['edit.copy-as-html', ''],
   ['edit.paste-as-plaintext', 'Ctrl+Shift+V'],
+  ['edit.paste-filepath', 'Ctrl+Alt+V'],
   ['edit.select-all', 'Ctrl+A'],
   ['edit.duplicate', 'Ctrl+Shift+E'],
   ['edit.create-paragraph', 'Ctrl+Shift+N'],

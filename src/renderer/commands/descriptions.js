@@ -27,6 +27,7 @@ const commandDescriptions = Object.freeze({
   'edit.copy-as-markdown': 'Edit: Copy as Markdown',
   'edit.copy-as-html': 'Edit: Copy as HTML',
   'edit.paste-as-plaintext': 'Edit: Paste as Plain Text',
+  'edit.paste-filepath': 'Edit: Paste File Path',
   'edit.select-all': 'Edit: Select All',
   'edit.duplicate': 'Edit: Duplicate',
   'edit.create-paragraph': 'Edit: Create Paragraph',

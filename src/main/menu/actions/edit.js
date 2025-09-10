@@ -50,6 +50,10 @@ export const editorPasteAsPlainText = win => {
   edit(win, 'pasteAsPlainText')
 }
 
+export const editorPasteFilePath = win => {
+  edit(win, 'pasteFilePath')
+}
+
 export const editorSelectAll = win => {
   edit(win, 'selectAll')
 }
@@ -136,6 +140,7 @@ export const loadEditCommands = commandManager => {
   commandManager.add(COMMANDS.EDIT_FIND_PREVIOUS, editorFindPrevious)
   commandManager.add(COMMANDS.EDIT_PASTE, nativePaste)
   commandManager.add(COMMANDS.EDIT_PASTE_AS_PLAINTEXT, editorPasteAsPlainText)
+  commandManager.add(COMMANDS.EDIT_PASTE_FILEPATH, editorPasteFilePath)
   commandManager.add(COMMANDS.EDIT_REDO, editorRedo)
   commandManager.add(COMMANDS.EDIT_REPLACE, editorReplace)
   commandManager.add(COMMANDS.EDIT_SCREENSHOT, screenshot)

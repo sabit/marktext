@@ -20,7 +20,7 @@ const filepathCtrl = ContentState => {
     }
 
     const { text } = block
-    const filepathTag = `<filepath>${filePath}</filepath>`
+    const filepathTag = `<filepath>${filePath}</filepath> `
 
     // Insert at the end of the current line
     block.text = text + filepathTag

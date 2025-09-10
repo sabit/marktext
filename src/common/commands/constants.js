@@ -12,6 +12,7 @@ const COMMANDS = Object.freeze({
   EDIT_FIND_PREVIOUS: 'edit.find-previous',
   EDIT_PASTE: 'edit.paste',
   EDIT_PASTE_AS_PLAINTEXT: 'edit.paste-as-plaintext',
+  EDIT_PASTE_FILEPATH: 'edit.paste-filepath',
   EDIT_REDO: 'edit.redo',
   EDIT_REPLACE: 'edit.replace',
   EDIT_SCREENSHOT: 'edit.screenshot',

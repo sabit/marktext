@@ -58,6 +58,12 @@ export default function (keybindings) {
         actions.editorPasteAsPlainText(browserWindow)
       }
     }, {
+      label: 'Paste File Path',
+      accelerator: keybindings.getAccelerator(COMMANDS.EDIT_PASTE_FILEPATH),
+      click (menuItem, browserWindow) {
+        actions.editorPasteFilePath(browserWindow)
+      }
+    }, {
       type: 'separator'
     }, {
       label: 'Select All',

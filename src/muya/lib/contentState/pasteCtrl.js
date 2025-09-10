@@ -419,11 +419,44 @@ const pasteCtrl = ContentState => {
           }
           break
         }
+        case 'pasteFilePath': {
+          // Try to get file path from clipboard
+          const filePath = this.muya.options.clipboardFilePath()
+          if (filePath && typeof filePath === 'string') {
+            // Check for non-ASCII characters and show warning if found
+            // eslint-disable-next-line no-control-regex
+            if (/[^\x00-\x7F]/.test(filePath)) {
+              // Emit event to show warning notification
+              this.muya.dispatchUnicodeWarning(filePath)
+              // Don't paste the path with Unicode characters
+              break
+            }
+            appendHtml(filePath)
+          }
+          break
+        }
       }
       return this.partialRender()
     }
 
-    const stateFragments = type === 'pasteAsPlainText' || copyType === 'copyAsMarkdown'
+    // Handle pasteFilePath type
+    if (type === 'pasteFilePath') {
+      const filePath = this.muya.options.clipboardFilePath()
+      if (filePath && typeof filePath === 'string') {
+        // Check for non-ASCII characters and show warning if found
+        // eslint-disable-next-line no-control-regex
+        if (/[^\x00-\x7F]/.test(filePath)) {
+          // Emit event to show warning notification
+          this.muya.dispatchUnicodeWarning(filePath)
+          // Don't paste the path with Unicode characters
+          return this.partialRender()
+        }
+        appendHtml(filePath)
+      }
+      return this.partialRender()
+    }
+
+    const stateFragments = type === 'pasteAsPlainText' || type === 'pasteFilePath' || copyType === 'copyAsMarkdown'
       ? this.markdownToState(text)
       : this.html2State(html)
 

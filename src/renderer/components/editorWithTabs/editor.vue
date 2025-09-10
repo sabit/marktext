@@ -584,6 +584,7 @@ export default {
       bus.$on('copyAsMarkdown', this.handleCopyPaste)
       bus.$on('copyAsHtml', this.handleCopyPaste)
       bus.$on('pasteAsPlainText', this.handleCopyPaste)
+      bus.$on('pasteFilePath', this.handleCopyPaste)
       bus.$on('duplicate', this.handleParagraph)
       bus.$on('createParagraph', this.handleParagraph)
       bus.$on('deleteParagraph', this.handleParagraph)
@@ -657,6 +658,15 @@ export default {
 
       this.editor.on('selectionFormats', formats => {
         this.$store.dispatch('SELECTION_FORMATS', formats)
+      })
+
+      // Listen for Unicode paste warning
+      this.editor.on('paste-unicode-warning', (filePath) => {
+        notice.notify({
+          title: 'Paste File Path',
+          type: 'warning',
+          message: 'Unicode file paths are not supported. Please rename the file to use only English characters (A-Z, a-z, 0-9, and common symbols).'
+        })
       })
 
       document.addEventListener('keyup', this.keyup)
@@ -1147,6 +1157,7 @@ export default {
     bus.$off('copyAsMarkdown', this.handleCopyPaste)
     bus.$off('copyAsHtml', this.handleCopyPaste)
     bus.$off('pasteAsPlainText', this.handleCopyPaste)
+    bus.$off('pasteFilePath', this.handleCopyPaste)
     bus.$off('duplicate', this.handleParagraph)
     bus.$off('createParagraph', this.handleParagraph)
     bus.$off('deleteParagraph', this.handleParagraph)
