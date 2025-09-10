@@ -17,5 +17,10 @@
     "**/build": true,
     "**/node_modules": true,
     "**/dist": true
-  }
+  },
+
+  // Terminal settings for Git Bash
+  "terminal.integrated.shell.windows": "C:\\Program Files\\Git\\bin\\bash.exe",
+  "terminal.integrated.shellArgs.windows": [],
+  "terminal.integrated.defaultProfile.windows": "Git Bash"
 }

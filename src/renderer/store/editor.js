@@ -4,10 +4,10 @@ import equal from 'fast-deep-equal'
 import path from 'path'
 import bus from '../bus'
 import {
-    FileEncodingCommand,
-    LineEndingCommand,
-    QuickOpenCommand,
-    TrailingNewlineCommand
+  FileEncodingCommand,
+  LineEndingCommand,
+  QuickOpenCommand,
+  TrailingNewlineCommand
 } from '../commands'
 import notice from '../services/notification'
 import { getUniqueId, hasKeys } from '../util'
