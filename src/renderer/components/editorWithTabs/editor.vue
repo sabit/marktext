@@ -74,40 +74,40 @@
 
 <script>
 import { shell } from 'electron'
-import path from 'path'
 import log from 'electron-log'
+import path from 'path'
 import { mapState } from 'vuex'
 // import ViewImage from 'view-image'
-import { isChildOfDirectory } from 'common/filesystem/paths'
-import Muya from 'muya/lib'
-import TablePicker from 'muya/lib/ui/tablePicker'
-import QuickInsert from 'muya/lib/ui/quickInsert'
-import CodePicker from 'muya/lib/ui/codePicker'
-import EmojiPicker from 'muya/lib/ui/emojiPicker'
-import ImagePathPicker from 'muya/lib/ui/imagePicker'
-import ImageSelector from 'muya/lib/ui/imageSelector'
-import ImageToolbar from 'muya/lib/ui/imageToolbar'
-import Transformer from 'muya/lib/ui/transformer'
-import FormatPicker from 'muya/lib/ui/formatPicker'
-import LinkTools from 'muya/lib/ui/linkTools'
-import FootnoteTool from 'muya/lib/ui/footnoteTool'
-import TableBarTools from 'muya/lib/ui/tableTools'
-import FrontMenu from 'muya/lib/ui/frontMenu'
-import Search from '../search'
 import bus from '@/bus'
+import { SpellcheckerLanguageCommand } from '@/commands'
 import { DEFAULT_EDITOR_FONT_FAMILY } from '@/config'
 import notice from '@/services/notification'
 import Printer from '@/services/printService'
-import { SpellcheckerLanguageCommand } from '@/commands'
 import { SpellChecker } from '@/spellchecker'
-import { isOsx, animatedScrollTo } from '@/util'
-import { moveImageToFolder, moveToRelativeFolder, uploadImage } from '@/util/fileSystem'
+import { animatedScrollTo, isOsx } from '@/util'
 import { guessClipboardFilePath } from '@/util/clipboard'
+import { moveImageToFolder, moveToRelativeFolder, uploadImage } from '@/util/fileSystem'
 import { getCssForOptions, getHtmlToc } from '@/util/pdf'
 import { addCommonStyle, setEditorWidth } from '@/util/theme'
+import { isChildOfDirectory } from 'common/filesystem/paths'
+import Muya from 'muya/lib'
+import CodePicker from 'muya/lib/ui/codePicker'
+import EmojiPicker from 'muya/lib/ui/emojiPicker'
+import FootnoteTool from 'muya/lib/ui/footnoteTool'
+import FormatPicker from 'muya/lib/ui/formatPicker'
+import FrontMenu from 'muya/lib/ui/frontMenu'
+import ImagePathPicker from 'muya/lib/ui/imagePicker'
+import ImageSelector from 'muya/lib/ui/imageSelector'
+import ImageToolbar from 'muya/lib/ui/imageToolbar'
+import LinkTools from 'muya/lib/ui/linkTools'
+import QuickInsert from 'muya/lib/ui/quickInsert'
+import TablePicker from 'muya/lib/ui/tablePicker'
+import TableBarTools from 'muya/lib/ui/tableTools'
+import Transformer from 'muya/lib/ui/transformer'
+import Search from '../search'
 
-import 'muya/themes/default.css'
 import '@/assets/themes/codemirror/one-dark.css'
+import 'muya/themes/default.css'
 // import 'view-image/lib/imgViewer.css'
 import CloseIcon from '@/assets/icons/close.svg'
 
@@ -534,7 +534,8 @@ export default {
         imageAction: this.imageAction.bind(this),
         imagePathPicker: this.imagePathPicker.bind(this),
         clipboardFilePath: guessClipboardFilePath,
-        imagePathAutoComplete: this.imagePathAutoComplete.bind(this)
+        imagePathAutoComplete: this.imagePathAutoComplete.bind(this),
+        notice
       }
 
       if (/dark/i.test(theme)) {

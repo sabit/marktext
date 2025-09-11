@@ -1,6 +1,6 @@
 
-import { PARAGRAPH_TYPES, PREVIEW_DOMPURIFY_CONFIG, HAS_TEXT_BLOCK_REG, IMAGE_EXT_REG, URL_REG } from '../config'
-import { sanitize, getUniqueId, getImageInfo as getImageSrc, getPageTitle } from '../utils'
+import { HAS_TEXT_BLOCK_REG, IMAGE_EXT_REG, PARAGRAPH_TYPES, PREVIEW_DOMPURIFY_CONFIG, URL_REG } from '../config'
+import { getImageInfo as getImageSrc, getPageTitle, getUniqueId, sanitize } from '../utils'
 import { getImageInfo } from '../utils/getImageInfo'
 
 const LIST_REG = /ul|ol/
@@ -423,6 +423,30 @@ const pasteCtrl = ContentState => {
           // Try to get file path from clipboard
           const filePath = this.muya.options.clipboardFilePath()
           if (filePath && typeof filePath === 'string') {
+            // Check for UTF-8/Unicode characters that may cause issues
+            const hasUnicodeChars = /[\u0080-\uFFFF]/.test(filePath) || filePath.includes('\uFFFD')
+
+            if (hasUnicodeChars) {
+              // Show warning message for files with Unicode characters
+              const { muya } = this
+              if (muya && muya.options && muya.options.notice) {
+                muya.options.notice.notify({
+                  title: 'Unsupported File Name',
+                  type: 'warning',
+                  message: 'Files with non-english characters in their names are not supported for pasting. Rename the file.',
+                  time: 5000
+                })
+              } else {
+                // Fallback: use console warning and browser alert
+                console.warn('Unsupported file name with Unicode characters:', filePath)
+                if (typeof window !== 'undefined' && window.alert) {
+                  window.alert('Files with non-english characters in their names are not supported for pasting. Rename the file.')
+                }
+              }
+              // Ignore the paste action
+              return this.partialRender()
+            }
+
             // Convert file path to markdown hyperlink syntax
             const fileUrl = `file://${filePath.replace(/\\/g, '/')}`
             // Extract just the filename for display
@@ -440,6 +464,30 @@ const pasteCtrl = ContentState => {
     if (type === 'pasteFilePath') {
       const filePath = this.muya.options.clipboardFilePath()
       if (filePath && typeof filePath === 'string') {
+        // Check for UTF-8/Unicode characters that may cause issues
+        const hasUnicodeChars = /[\u0080-\uFFFF]/.test(filePath) || filePath.includes('\uFFFD')
+
+        if (hasUnicodeChars) {
+          // Show warning message for files with Unicode characters
+          const { muya } = this
+          if (muya && muya.options && muya.options.notice) {
+            muya.options.notice.notify({
+              title: 'Unsupported File Name',
+              type: 'warning',
+              message: 'Files with Unicode characters in their names are not supported for pasting. Please rename the file using only ASCII characters.',
+              time: 5000
+            })
+          } else {
+            // Fallback: use console warning and browser alert
+            console.warn('Unsupported file name with Unicode characters:', filePath)
+            if (typeof window !== 'undefined' && window.alert) {
+              window.alert('Files with Unicode characters in their names are not supported for pasting. Please rename the file using only ASCII characters.')
+            }
+          }
+          // Ignore the paste action
+          return this.partialRender()
+        }
+
         // Convert file path to markdown hyperlink syntax
         const fileUrl = `file://${filePath.replace(/\\/g, '/')}`
         // Extract just the filename for display
