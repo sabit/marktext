@@ -510,6 +510,12 @@ export const printDocument = win => {
   }
 }
 
+export const mergeDocuments = win => {
+  if (win && win.webContents) {
+    win.webContents.send('mt::merge-documents')
+  }
+}
+
 export const openFile = async win => {
   const { filePaths } = await dialog.showOpenDialog(win, {
     properties: ['openFile', 'multiSelections'],
@@ -609,6 +615,7 @@ export const loadFileCommands = commandManager => {
   commandManager.add(COMMANDS.FILE_CLOSE_WINDOW, closeWindow)
   commandManager.add(COMMANDS.FILE_EXPORT_FILE, exportFile)
   commandManager.add(COMMANDS.FILE_IMPORT_FILE, importFile)
+  commandManager.add(COMMANDS.FILE_MERGE_DOCUMENTS, mergeDocuments)
   commandManager.add(COMMANDS.FILE_MOVE_FILE, moveTo)
   commandManager.add(COMMANDS.FILE_NEW_FILE, newEditorWindow)
   commandManager.add(COMMANDS.FILE_NEW_TAB, newBlankTab)

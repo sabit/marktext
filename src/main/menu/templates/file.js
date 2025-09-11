@@ -129,6 +129,11 @@ export default function (keybindings, userPreference, recentlyUsedFiles) {
         click (menuItem, browserWindow) {
           actions.exportFile(browserWindow, 'pdf')
         }
+      }, {
+        label: 'Merge Documents',
+        click (menuItem, browserWindow) {
+          actions.mergeDocuments(browserWindow)
+        }
       }
     ]
   }, {

@@ -39,6 +39,11 @@ export const category = [{
   icon: ImageIcon,
   path: '/preference/image'
 }, {
+  name: 'Conversion Tools',
+  label: 'conversionTools',
+  icon: GeneralIcon, // Using GeneralIcon for now
+  path: '/preference/conversionTools'
+}, {
   name: 'Key Bindings',
   label: 'keybindings',
   icon: KeyBindingIcon,

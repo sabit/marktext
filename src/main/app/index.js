@@ -580,6 +580,18 @@ class App {
     ipcMain.handle('mt::fs-trash-item', async (event, fullPath) => {
       return shell.trashItem(fullPath)
     })
+
+    ipcMain.handle('mt::dialog-select-file', async (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        filters: [{
+          name: 'All Files',
+          extensions: ['*']
+        }]
+      })
+      return result
+    })
   }
 }
 

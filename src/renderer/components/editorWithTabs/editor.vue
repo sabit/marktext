@@ -76,6 +76,7 @@
 import { shell } from 'electron'
 import log from 'electron-log'
 import path from 'path'
+import fs from 'fs'
 import { mapState } from 'vuex'
 // import ViewImage from 'view-image'
 import bus from '@/bus'
@@ -595,6 +596,7 @@ export default {
       bus.$on('switch-spellchecker-language', this.switchSpellcheckLanguage)
       bus.$on('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
       bus.$on('replace-misspelling', this.replaceMisspelling)
+      bus.$on('merge-documents', this.handleDocumentMerge)
 
       this.editor.on('change', changes => {
         // WORKAROUND: "id: 'muya'"
@@ -1022,6 +1024,216 @@ export default {
       }
     },
 
+    async handleDocumentMerge () {
+      // Check if document is saved
+      const { currentFile } = this
+      if (!currentFile.isSaved) {
+        throw new Error('Please save the document before merging.')
+      }
+
+      // Put document into readonly mode
+      this.editor.setOptions({ readOnly: true })
+
+      try {
+        // Get markdown content
+        const markdown = this.editor.getMarkdown()
+
+        // Parse ordered lists and extract file links
+        const sections = this.parseDocumentSections(markdown)
+
+        if (sections.length === 0) {
+          throw new Error('No ordered lists with file links found in the document.')
+        }
+
+        // Convert and merge documents
+        const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
+
+        // Show success message
+        notice.notify({
+          title: 'Document merge completed',
+          message: `Merged PDF saved to: ${mergedPdfPath}`,
+          showConfirm: true
+        })
+
+        // Open the merged PDF
+        // shell.openPath(mergedPdfPath)
+      } finally {
+        // Restore readonly mode
+        this.editor.setOptions({ readOnly: false })
+      }
+    },
+
+    parseDocumentSections (markdown) {
+      const lines = markdown.split('\n')
+      const sections = []
+      let currentSection = null
+      let inOrderedList = false
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+
+        // Check for ordered list items
+        const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/)
+        if (orderedListMatch) {
+          const [, , content] = orderedListMatch
+          inOrderedList = true
+
+          // Check if this is a new section (heading)
+          if (content.startsWith('#')) {
+            if (currentSection) {
+              sections.push(currentSection)
+            }
+            currentSection = {
+              title: content.replace(/^#+\s*/, ''),
+              docs: []
+            }
+          } else {
+            // Check for file links
+            const fileLinkMatch = content.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
+            if (fileLinkMatch) {
+              if (!currentSection) {
+                currentSection = {
+                  title: `Section ${sections.length + 1}`,
+                  docs: []
+                }
+              }
+              currentSection.docs.push(fileLinkMatch[2])
+            } else if (currentSection) {
+              // Ordered list item without file link
+              throw new Error(`Ordered list item "${content}" does not contain a file link.`)
+            }
+          }
+        } else if (line.trim() === '' && inOrderedList) {
+          // End of ordered list
+          inOrderedList = false
+        }
+      }
+
+      // Add the last section
+      if (currentSection) {
+        sections.push(currentSection)
+      }
+
+      return sections
+    },
+
+    async convertAndMergeDocuments (sections, basePath) {
+      const { PDFDocument } = require('pdf-lib')
+      const path = require('path')
+      const { exec } = require('child_process')
+      const { promisify } = require('util')
+      const execAsync = promisify(exec)
+
+      const baseDir = path.dirname(basePath)
+      const outputDir = baseDir
+      const mergedPdfPath = path.join(outputDir, 'merged_document.pdf')
+
+      // Get conversion tools from preferences
+      const conversionTools = this.$store.state.preferences.conversionTools || []
+
+      // Process each section
+      const mergeList = []
+
+      for (const section of sections) {
+        const sectionPdfs = []
+
+        for (const docPath of section.docs) {
+          let pdfPath = docPath
+
+          // If not already a PDF, convert it
+          if (!docPath.toLowerCase().endsWith('.pdf')) {
+            const tool = this.findConversionTool(docPath, conversionTools)
+            if (!tool) {
+              throw new Error(`No conversion tool found for file: ${docPath}`)
+            }
+
+            pdfPath = await this.convertToPdf(docPath, tool, outputDir, execAsync)
+          } else {
+            // Copy PDF if it's not in the output directory
+            const fileName = path.basename(docPath, '.pdf') + '.pdf'
+            const destPath = path.join(outputDir, fileName)
+
+            if (docPath !== destPath) {
+              // Check if destination is newer
+              const srcStat = fs.statSync(docPath)
+              const destExists = fs.existsSync(destPath)
+
+              if (!destExists || srcStat.mtime > fs.statSync(destPath).mtime) {
+                fs.copyFileSync(docPath, destPath)
+              }
+            }
+            pdfPath = destPath
+          }
+
+          sectionPdfs.push(pdfPath)
+        }
+
+        mergeList.push({
+          title: section.title,
+          pdfs: sectionPdfs
+        })
+      }
+
+      // Merge all PDFs
+      const finalDoc = await PDFDocument.create()
+
+      for (const section of mergeList) {
+        for (const pdfPath of section.pdfs) {
+          const pdfBytes = fs.readFileSync(pdfPath)
+          const pdfDoc = await PDFDocument.load(pdfBytes)
+          const pages = await finalDoc.copyPages(pdfDoc, pdfDoc.getPageIndices())
+
+          pages.forEach(page => finalDoc.addPage(page))
+        }
+      }
+
+      const mergedBytes = await finalDoc.save()
+      fs.writeFileSync(mergedPdfPath, mergedBytes)
+
+      return mergedPdfPath
+    },
+
+    findConversionTool (filePath, tools) {
+      const ext = path.extname(filePath).toLowerCase().slice(1)
+
+      for (const tool of tools) {
+        if (tool.enabled && tool.extensions.includes(ext)) {
+          return tool
+        }
+      }
+
+      return null
+    },
+
+    async convertToPdf (inputPath, tool, outputDir, execAsync) {
+      const fileName = path.basename(inputPath, path.extname(inputPath))
+      const outputPath = path.join(outputDir, `${fileName}.pdf`)
+
+      // Check if output file exists and is newer than input
+      if (fs.existsSync(outputPath)) {
+        const inputStat = fs.statSync(inputPath)
+        const outputStat = fs.statSync(outputPath)
+
+        if (outputStat.mtime >= inputStat.mtime) {
+          return outputPath // Skip conversion
+        }
+      }
+
+      // Build command
+      const command = tool.arguments
+        .replace('%input', `"${inputPath}"`)
+        .replace('%output', `"${outputPath}"`)
+
+      const fullCommand = `"${tool.path}" ${command}`
+
+      try {
+        await execAsync(fullCommand)
+        return outputPath
+      } catch (error) {
+        throw new Error(`Conversion failed for ${inputPath}: ${error.message}`)
+      }
+    },
+
     handlePrintServiceClearup () {
       this.printer.clearup()
     },
@@ -1159,6 +1371,7 @@ export default {
     bus.$off('switch-spellchecker-language', this.switchSpellcheckLanguage)
     bus.$off('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
     bus.$off('replace-misspelling', this.replaceMisspelling)
+    bus.$off('merge-documents', this.handleDocumentMerge)
 
     document.removeEventListener('keyup', this.keyup)
 

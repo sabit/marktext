@@ -407,5 +407,40 @@
     "description": "Watcher--Whether to use polling. Polling may leads to high CPU utilization but is necessary to watch files over a network.",
     "type": "boolean",
     "default": false
+  },
+  "conversionTools": {
+    "description": "Conversion Tools--List of conversion tools for document processing.",
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the conversion tool"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "File extensions this tool can handle"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to the tool executable"
+        },
+        "arguments": {
+          "type": "string",
+          "description": "Command line arguments for the tool"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this tool is enabled",
+          "default": true
+        }
+      },
+      "required": ["name", "extensions", "path", "arguments"]
+    },
+    "default": []
   }
 }
