@@ -423,15 +423,12 @@ const pasteCtrl = ContentState => {
           // Try to get file path from clipboard
           const filePath = this.muya.options.clipboardFilePath()
           if (filePath && typeof filePath === 'string') {
-            // Check for non-ASCII characters and show warning if found
-            // eslint-disable-next-line no-control-regex
-            if (/[^\x00-\x7F]/.test(filePath)) {
-              // Emit event to show warning notification
-              this.muya.dispatchUnicodeWarning(filePath)
-              // Don't paste the path with Unicode characters
-              break
-            }
-            appendHtml(filePath)
+            // Convert file path to markdown hyperlink syntax
+            const fileUrl = `file://${filePath.replace(/\\/g, '/')}`
+            // Extract just the filename for display
+            const fileName = filePath.split(/[/\\]/).pop()
+            const markdownLink = `[${fileName}](${fileUrl})`
+            appendHtml(markdownLink)
           }
           break
         }
@@ -443,15 +440,12 @@ const pasteCtrl = ContentState => {
     if (type === 'pasteFilePath') {
       const filePath = this.muya.options.clipboardFilePath()
       if (filePath && typeof filePath === 'string') {
-        // Check for non-ASCII characters and show warning if found
-        // eslint-disable-next-line no-control-regex
-        if (/[^\x00-\x7F]/.test(filePath)) {
-          // Emit event to show warning notification
-          this.muya.dispatchUnicodeWarning(filePath)
-          // Don't paste the path with Unicode characters
-          return this.partialRender()
-        }
-        appendHtml(filePath)
+        // Convert file path to markdown hyperlink syntax
+        const fileUrl = `file://${filePath.replace(/\\/g, '/')}`
+        // Extract just the filename for display
+        const fileName = filePath.split(/[/\\]/).pop()
+        const markdownLink = `[${fileName}](${fileUrl})`
+        appendHtml(markdownLink)
       }
       return this.partialRender()
     }

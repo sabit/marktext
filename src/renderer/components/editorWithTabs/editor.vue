@@ -660,15 +660,6 @@ export default {
         this.$store.dispatch('SELECTION_FORMATS', formats)
       })
 
-      // Listen for Unicode paste warning
-      this.editor.on('paste-unicode-warning', (filePath) => {
-        notice.notify({
-          title: 'Paste File Path',
-          type: 'warning',
-          message: 'Unicode file paths are not supported. Please rename the file to use only English characters (A-Z, a-z, 0-9, and common symbols).'
-        })
-      })
-
       document.addEventListener('keyup', this.keyup)
 
       setEditorWidth(editorLineWidth)
