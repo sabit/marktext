@@ -11,7 +11,17 @@ const outputFile = process.argv[4]
 const sections = [
   {
     title: '1. Introduction',
-    pdfs: ['intro1.pdf', 'intro2.pdf']
+    pdfs: ['intro1.pdf', 'intro2.pdf'],
+    sections: [
+      {
+        title: '1.1 Subsection',
+        pdfs: ['subsection.pdf']
+      },
+      {
+        title: '1.2 Subsection',
+        pdfs: ['subsection2.pdf']
+      }
+    ]
   },
   {
     title: '2. Technical Spec',

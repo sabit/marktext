@@ -8,11 +8,11 @@ I want to implement additional configration/preference pane (liek the keybinding
       Status: enabled/disabled
 
 
-I want to implement a command under File->Export->ToC that will do the following:
+I want to implement a command under File->Export that will do the following:
 - check if document is saved, show error otherwise
 - put document into "readonly" mode so user cannot type
 - check if there is an ordered list in the current document
-- collect the corresponding file:// link(s) and create a a dictionary (need the numbered list item as the key, not just raw text). There could be multiple file links per list item
+- collect the corresponding file:// link(s) and create a data structure. It is given in sample-runner.js named sections
 - if there are links outside ordered list lines show error
 - if there are ordered list items without file:// links show error
 - for debugging purposes, output the dictionary in the console
@@ -20,5 +20,5 @@ I want to implement a command under File->Export->ToC that will do the following
   - convert all the non-PDF documents to PDF using the tools in Conversion Tools preferences
   - save them to the same folder as active document
   - do not convert if output file already exists and newer than source 
-- merge all the PDFs maintaining the order in the ordered list using pdf-lib. A sample on how the algorithm is given in sample-runner.js
+- merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. A sample on how the algorithm is given in sample-runner.js
 
