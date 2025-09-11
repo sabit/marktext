@@ -16,9 +16,10 @@ I want to implement a command under File->Export that will do the following:
 - if there are links outside ordered list lines show error
 - if there are ordered list items without file:// links show error
 - for debugging purposes, output the dictionary in the console
-- iterate over the ordered list
-  - convert all the non-PDF documents to PDF using the tools in Conversion Tools preferences
-  - save them to the same folder as active document
-  - do not convert if output file already exists and newer than source 
-- merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. A sample on how the algorithm is given in sample-runner.js
+- iterate over the sections data structure and create a new data structure (e.g sample-runner.js -> mergeList)
+  - set the directory of the current active editor's file as working directory; all copy operations are destined here
+  - if source (docs) is already PDF, just copy
+  - convert the non-PDF documents to PDF using the tools in Conversion Tools preferences. Preserve the original document names in the filename
+  - do not convert/copy if output file already exists and newer than source 
+- iterate over the mergeList and merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. The algorithm is given in sample-runner.js
 

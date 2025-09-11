@@ -7,26 +7,57 @@ const headerTemplatePortraitPath = process.argv[2]
 const headerTemplateLandscapePath = process.argv[3]
 const outputFile = process.argv[4]
 
-// Section map
+// Section map, to be passed from another function/module
 const sections = [
   {
     title: '1. Introduction',
-    pdfs: ['intro1.pdf', 'intro2.pdf'],
+    docs: ['myintro.docx'],
     sections: [
       {
         title: '1.1 Subsection',
-        pdfs: ['subsection.pdf']
+        docs: ['subsection.docx']
       },
       {
         title: '1.2 Subsection',
-        pdfs: ['subsection2.pdf']
+        docs: ['subsection2.docx']
       }
     ]
   },
   {
     title: '2. Technical Spec',
-    pdfs: ['dell.pdf', 'hp.pdf']
+    docs: ['dell.docx', 'hp.docx']
+  },
+  {
+    title: '3. Pricing',
+    docs: ['hardware.docx', 'software.docx']
   }
+]
+
+// merge list
+const mergeList = [
+  {
+    title: '1. Introduction',
+    pdfs: ['myintro.docx.pdf'],
+    sections: [
+      {
+        title: '1.1 Subsection',
+        pdfs: ['subsection.docx.pdf']
+      },
+      {
+        title: '1.2 Subsection',
+        pdfs: ['subsection2.docx.pdf']
+      }
+    ]
+  },
+  {
+    title: '2. Technical Spec',
+    pdfs: ['dell.pdf', 'dell.pdf']
+  },
+  {
+    title: '3. Pricing',
+    pdfs: ['hardware.xlsx.pdf', 'software.xlsx.pdf']
+  }
+
 ]
 
 async function mergeWithReusableTemplates () {
@@ -42,7 +73,7 @@ async function mergeWithReusableTemplates () {
 
   // First pass: calculate total pages
   let totalPages = 0
-  for (const section of sections) {
+  for (const section of mergeList) {
     for (const pdfFile of section.pdfs) {
       const contentBytes = fs.readFileSync(pdfFile)
       const doc = await PDFDocument.load(contentBytes)
@@ -53,7 +84,7 @@ async function mergeWithReusableTemplates () {
   const finalDoc = await PDFDocument.create()
   let globalPageCounter = 1
 
-  for (const section of sections) {
+  for (const section of mergeList) {
     for (const pdfFile of section.pdfs) {
       const contentBytes = fs.readFileSync(pdfFile)
       const contentDoc = await PDFDocument.load(contentBytes)
