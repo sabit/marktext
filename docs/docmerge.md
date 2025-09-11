@@ -21,5 +21,5 @@ I want to implement a command under File->Export that will do the following:
   - if source (docs) is already PDF, just copy
   - convert the non-PDF documents to PDF using the tools in Conversion Tools preferences. Preserve the original document names in the filename
   - do not convert/copy if output file already exists and newer than source 
-- iterate over the mergeList and merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. The algorithm is given in sample-runner.js
+- iterate over the mergeList and merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. The algorithm is given in sample-runner.js (don't use the existing export system, it is not appropriate. This one is standalone.)
 
