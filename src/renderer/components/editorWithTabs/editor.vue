@@ -1042,8 +1042,11 @@ export default {
         const sections = this.parseDocumentSections(markdown)
 
         if (sections.length === 0) {
-          throw new Error('No ordered lists with file links found in the document.')
+          throw new Error('No ordered lists with file links found in the document. Make sure your document contains ordered lists with file:// links.')
         }
+
+        // Debug output as per requirements
+        console.log('Parsed sections:', sections)
 
         // Convert and merge documents
         const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
@@ -1052,11 +1055,20 @@ export default {
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
-          showConfirm: true
+          showConfirm: true,
+          time: 0 // Don't auto-hide success messages
         })
 
         // Open the merged PDF
         // shell.openPath(mergedPdfPath)
+      } catch (error) {
+        console.error('Document merge failed:', error)
+        notice.notify({
+          title: 'Document merge failed',
+          type: 'error',
+          message: error.message || 'An unexpected error occurred during document merge.',
+          time: 0 // Don't auto-hide error messages
+        })
       } finally {
         // Restore readonly mode
         this.editor.setOptions({ readOnly: false })
@@ -1070,11 +1082,15 @@ export default {
       let inOrderedList = false
 
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim()
+        const originalLine = lines[i]
+        const line = originalLine.trim()
 
-        // Check for ordered list items
+        console.log(`Processing line ${i + 1}: "${originalLine}" (trimmed: "${line}")`)
+
+        // Check for ordered list items FIRST
         const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/)
         if (orderedListMatch) {
+          console.log(`Found ordered list item: ${orderedListMatch[0]}`)
           const [, , content] = orderedListMatch
           inOrderedList = true
 
@@ -1098,14 +1114,25 @@ export default {
                 }
               }
               currentSection.docs.push(fileLinkMatch[2])
-            } else if (currentSection) {
-              // Ordered list item without file link
-              throw new Error(`Ordered list item "${content}" does not contain a file link.`)
+            } else {
+              // Ordered list item without file link - show error as per requirements
+              throw new Error(`Invalid ordered list item "${content}". All ordered list items must contain file:// links in the format [text](file://path).`)
             }
           }
-        } else if (line.trim() === '' && inOrderedList) {
-          // End of ordered list
-          inOrderedList = false
+        } else {
+          // Only check for file links outside ordered lists if we're not in an ordered list
+          // and the line is not empty and not a heading
+          if (!inOrderedList && line.trim() !== '' && !line.startsWith('#')) {
+            const fileLinkMatch = line.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
+            if (fileLinkMatch) {
+              throw new Error(`File links must be inside ordered list items. Found link outside ordered list: "${line}"`)
+            }
+          }
+
+          // Check for end of ordered list (empty line)
+          if (line.trim() === '' && inOrderedList) {
+            inOrderedList = false
+          }
         }
       }
 
@@ -1138,28 +1165,30 @@ export default {
         const sectionPdfs = []
 
         for (const docPath of section.docs) {
-          let pdfPath = docPath
+          // Convert file:// URL to file system path
+          const filePath = this.convertFileUrlToPath(docPath)
+          let pdfPath = filePath
 
           // If not already a PDF, convert it
-          if (!docPath.toLowerCase().endsWith('.pdf')) {
-            const tool = this.findConversionTool(docPath, conversionTools)
+          if (!filePath.toLowerCase().endsWith('.pdf')) {
+            const tool = this.findConversionTool(filePath, conversionTools)
             if (!tool) {
-              throw new Error(`No conversion tool found for file: ${docPath}`)
+              throw new Error(`No conversion tool found for file: ${filePath}`)
             }
 
-            pdfPath = await this.convertToPdf(docPath, tool, outputDir, execAsync)
+            pdfPath = await this.convertToPdf(filePath, tool, outputDir, execAsync)
           } else {
             // Copy PDF if it's not in the output directory
-            const fileName = path.basename(docPath, '.pdf') + '.pdf'
+            const fileName = path.basename(filePath, '.pdf') + '.pdf'
             const destPath = path.join(outputDir, fileName)
 
-            if (docPath !== destPath) {
+            if (filePath !== destPath) {
               // Check if destination is newer
-              const srcStat = fs.statSync(docPath)
+              const srcStat = fs.statSync(filePath)
               const destExists = fs.existsSync(destPath)
 
               if (!destExists || srcStat.mtime > fs.statSync(destPath).mtime) {
-                fs.copyFileSync(docPath, destPath)
+                fs.copyFileSync(filePath, destPath)
               }
             }
             pdfPath = destPath
@@ -1173,6 +1202,9 @@ export default {
           pdfs: sectionPdfs
         })
       }
+
+      // Debug output as per requirements
+      console.log('Merge list:', mergeList)
 
       // Merge all PDFs
       const finalDoc = await PDFDocument.create()
@@ -1193,8 +1225,31 @@ export default {
       return mergedPdfPath
     },
 
+    convertFileUrlToPath (fileUrl) {
+      // Handle file:// URLs and convert to file system paths
+      if (fileUrl.startsWith('file://')) {
+        // Remove the file:// protocol
+        let filePath = fileUrl.substring(7) // Remove 'file://'
+
+        // Handle Windows drive letters (e.g., /C:/path -> C:/path)
+        if (filePath.startsWith('/') && filePath.length > 2 && filePath[2] === ':') {
+          filePath = filePath.substring(1)
+        }
+
+        // Decode URL-encoded characters
+        filePath = decodeURIComponent(filePath)
+
+        return filePath
+      }
+
+      // If it's already a regular path, return as-is
+      return fileUrl
+    },
+
     findConversionTool (filePath, tools) {
-      const ext = path.extname(filePath).toLowerCase().slice(1)
+      // Convert file URL to path if needed
+      const localPath = this.convertFileUrlToPath(filePath)
+      const ext = path.extname(localPath).toLowerCase().slice(1)
 
       for (const tool of tools) {
         if (tool.enabled && tool.extensions.includes(ext)) {
@@ -1206,12 +1261,14 @@ export default {
     },
 
     async convertToPdf (inputPath, tool, outputDir, execAsync) {
-      const fileName = path.basename(inputPath, path.extname(inputPath))
+      // Convert file URL to path if needed
+      const filePath = this.convertFileUrlToPath(inputPath)
+      const fileName = path.basename(filePath, path.extname(filePath))
       const outputPath = path.join(outputDir, `${fileName}.pdf`)
 
       // Check if output file exists and is newer than input
       if (fs.existsSync(outputPath)) {
-        const inputStat = fs.statSync(inputPath)
+        const inputStat = fs.statSync(filePath)
         const outputStat = fs.statSync(outputPath)
 
         if (outputStat.mtime >= inputStat.mtime) {
@@ -1221,7 +1278,7 @@ export default {
 
       // Build command
       const command = tool.arguments
-        .replace('%input', `"${inputPath}"`)
+        .replace('%input', `"${filePath}"`)
         .replace('%output', `"${outputPath}"`)
 
       const fullCommand = `"${tool.path}" ${command}`
@@ -1230,7 +1287,7 @@ export default {
         await execAsync(fullCommand)
         return outputPath
       } catch (error) {
-        throw new Error(`Conversion failed for ${inputPath}: ${error.message}`)
+        throw new Error(`Conversion failed for ${filePath}: ${error.message}`)
       }
     },
 
