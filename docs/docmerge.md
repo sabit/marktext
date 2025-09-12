@@ -4,7 +4,7 @@ I want to implement additional configration/preference pane (liek the keybinding
       Name: Name of the tool (e.g. DOCX to PDF using Libreoffice)
       Extensions: file extensions that are applicable (e.g. docx, doc)
       Path: Path to the installed tool (e.g. c:\program files\libreoffice\librewriter.exe)
-      Arguments: cli arguments (e.g. --headless %inputfile %ooutputfile)
+      Arguments: cli arguments (e.g. --headless %inputFile %outputDir)
       Status: enabled/disabled
 
 
@@ -13,7 +13,7 @@ I want to implement a command under File->Export that will do the following:
 - put document into "readonly" mode so user cannot type
 - check if there is an ordered list in the current document
 - collect the corresponding file:// link(s) and create a data structure. It is given in sample-runner.js named sections
-- if there are links outside ordered list lines show error
+- if there are links outside ordered list lines show error (unless it's an empty/whitespace line)
 - if there are ordered list items without file:// links show error
 - for debugging purposes, output the dictionary in the console
 - iterate over the sections data structure and create a new data structure (e.g sample-runner.js -> mergeList)

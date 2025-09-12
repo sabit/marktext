@@ -39,6 +39,9 @@ const actions = {
     ipcRenderer.on('mt::editor-insert-filepath', () => {
       bus.$emit('insert-filepath')
     })
+    ipcRenderer.on('mt::merge-documents', () => {
+      bus.$emit('merge-documents')
+    })
   }
 }
 

@@ -73,6 +73,9 @@ const state = {
 
   watcherUsePolling: false,
 
+  // Conversion tools for document merge functionality
+  conversionTools: [],
+
   // --------------------------------------------------------------------------
 
   // Edit modes of the current window (not part of persistent settings)
