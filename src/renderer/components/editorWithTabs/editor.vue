@@ -1116,7 +1116,7 @@ export default {
               currentSection.docs.push(fileLinkMatch[2])
             } else {
               // Ordered list item without file link - show error as per requirements
-              throw new Error(`Invalid ordered list item "${content}". All ordered list items must contain file:// links in the format [text](file://path).`)
+              throw new Error('Some sections have missing document')
             }
           }
         } else {
@@ -1169,18 +1169,32 @@ export default {
           const filePath = this.convertFileUrlToPath(docPath)
           let pdfPath = filePath
 
+          console.log(`Processing file: ${filePath}`)
+
           // If not already a PDF, convert it
           if (!filePath.toLowerCase().endsWith('.pdf')) {
+            console.log(`File is not PDF, attempting conversion: ${filePath}`)
             const tool = this.findConversionTool(filePath, conversionTools)
+
             if (!tool) {
+              console.error(`No conversion tool found for file: ${filePath}`)
+              console.log('Available conversion tools:', conversionTools)
               throw new Error(`No conversion tool found for file: ${filePath}`)
             }
 
+            console.log(`Found conversion tool: ${tool.name} for ${filePath}`)
             pdfPath = await this.convertToPdf(filePath, tool, outputDir, execAsync)
+            console.log(`Converted to PDF: ${pdfPath}`)
           } else {
+            console.log(`File is already PDF: ${filePath}`)
             // Copy PDF if it's not in the output directory
             const fileName = path.basename(filePath, '.pdf') + '.pdf'
             const destPath = path.join(outputDir, fileName)
+
+            // Check if source file exists
+            if (!fs.existsSync(filePath)) {
+              throw new Error(`Source PDF file does not exist: ${filePath}`)
+            }
 
             if (filePath !== destPath) {
               // Check if destination is newer
@@ -1211,6 +1225,11 @@ export default {
 
       for (const section of mergeList) {
         for (const pdfPath of section.pdfs) {
+          // Check if PDF file exists before trying to read it
+          if (!fs.existsSync(pdfPath)) {
+            throw new Error(`PDF file does not exist for merging: ${pdfPath}`)
+          }
+
           const pdfBytes = fs.readFileSync(pdfPath)
           const pdfDoc = await PDFDocument.load(pdfBytes)
           const pages = await finalDoc.copyPages(pdfDoc, pdfDoc.getPageIndices())
@@ -1251,12 +1270,18 @@ export default {
       const localPath = this.convertFileUrlToPath(filePath)
       const ext = path.extname(localPath).toLowerCase().slice(1)
 
+      console.log(`Looking for conversion tool for extension: '${ext}'`)
+      console.log(`Available tools: ${tools}`)
+
       for (const tool of tools) {
+        console.log(`Checking tool: ${tool.name}, enabled: ${tool.enabled}, extensions: ${tool.extensions}`)
         if (tool.enabled && tool.extensions.includes(ext)) {
+          console.log(`Found matching tool: ${tool.name}`)
           return tool
         }
       }
 
+      console.log(`No conversion tool found for extension: ${ext}`)
       return null
     },
 
@@ -1266,27 +1291,109 @@ export default {
       const fileName = path.basename(filePath, path.extname(filePath))
       const outputPath = path.join(outputDir, `${fileName}.pdf`)
 
+      // Normalize paths for Windows
+      const normalizedFilePath = path.resolve(filePath)
+      const normalizedOutputDir = path.resolve(outputDir)
+      const normalizedInputDir = path.dirname(normalizedFilePath)
+
+      // Normalize tool path for command line
+      const normalizedToolPath = path.resolve(tool.path).replace(/\\/g, '/')
+
+      console.log(`Converting ${filePath} to ${outputPath}`)
+      console.log(`Using tool: ${tool.name}`)
+      console.log(`Original tool path: ${tool.path}`)
+      console.log(`Normalized tool path: ${normalizedToolPath}`)
+      console.log(`Tool arguments template: ${tool.arguments}`)
+      console.log(`Input file exists: ${fs.existsSync(filePath)}`)
+      console.log(`Output directory exists: ${fs.existsSync(outputDir)}`)
+
       // Check if output file exists and is newer than input
       if (fs.existsSync(outputPath)) {
         const inputStat = fs.statSync(filePath)
         const outputStat = fs.statSync(outputPath)
 
         if (outputStat.mtime >= inputStat.mtime) {
+          console.log(`Output file ${outputPath} is up to date, skipping conversion`)
           return outputPath // Skip conversion
+        } else {
+          console.log(`Output file ${outputPath} is older than input, will overwrite`)
+          // Delete the stale file so we can detect conversion failures
+          fs.unlinkSync(outputPath)
+          console.log(`Deleted stale output file: ${outputPath}`)
         }
       }
 
-      // Build command
-      const command = tool.arguments
-        .replace('%input', `"${filePath}"`)
-        .replace('%output', `"${outputPath}"`)
+      console.log(`Normalized input path: ${normalizedFilePath}`)
+      console.log(`Normalized output dir: ${normalizedOutputDir}`)
+      console.log(`Normalized input dir: ${normalizedInputDir}`)
+      console.log(`Normalized tool path: ${normalizedToolPath}`)
 
-      const fullCommand = `"${tool.path}" ${command}`
+      // Build command with normalized paths
+      let command = tool.arguments
+        .replace('%input', `"${normalizedFilePath}"`)
+        .replace('%output', `"${outputPath}"`)
+        .replace('%inputFile', `"${normalizedFilePath}"`)
+        .replace('%outputDir', `"${normalizedOutputDir}"`)
+        .replace('%inputDir', `"${normalizedInputDir}"`)
+        .replace('%outputFile', `"${outputPath}"`)
+
+      const fullCommand = `"${normalizedToolPath}" ${command}`
+
+      console.log(`Command template after replacement: ${command}`)
+      console.log(`Final command: ${fullCommand}`)
 
       try {
-        await execAsync(fullCommand)
-        return outputPath
+        console.log('Executing conversion command...')
+        const result = await execAsync(fullCommand, { maxBuffer: 1024 * 1024 })
+        console.log('Command execution result:', result)
+
+        // Check if output file was actually created
+        if (fs.existsSync(outputPath)) {
+          const stats = fs.statSync(outputPath)
+          console.log(`✅ Output file created successfully: ${outputPath} (${stats.size} bytes)`)
+          return outputPath
+        } else {
+          console.error('❌ Command executed but expected output file was not found')
+          console.log('Expected output path:', outputPath)
+
+          // Check what files were actually created in the output directory
+          const outputDir = path.dirname(outputPath)
+          console.log('Checking output directory:', outputDir)
+
+          if (fs.existsSync(outputDir)) {
+            const files = fs.readdirSync(outputDir)
+            const pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'))
+            console.log('PDF files found in output directory:', pdfFiles)
+
+            // Look for a file with similar name
+            const expectedBaseName = path.basename(outputPath, '.pdf').toLowerCase()
+            const matchingFiles = pdfFiles.filter(f =>
+              f.toLowerCase().includes(expectedBaseName) ||
+              expectedBaseName.includes(f.toLowerCase().replace('.pdf', ''))
+            )
+
+            if (matchingFiles.length > 0) {
+              const actualOutputPath = path.join(outputDir, matchingFiles[0])
+              console.log(`✅ Found matching PDF file: ${actualOutputPath}`)
+              return actualOutputPath
+            }
+          } else {
+            console.error('Output directory does not exist:', outputDir)
+          }
+
+          throw new Error(`LibreOffice completed but expected output file not found: ${outputPath}`)
+        }
       } catch (error) {
+        console.error('❌ Conversion command failed:', error.message)
+        console.error('Failed command:', fullCommand)
+        console.error('Tool path used:', normalizedToolPath)
+
+        // Even if command failed, check if a PDF was created
+        if (fs.existsSync(outputPath)) {
+          console.log('⚠️  Output file exists despite command failure - partial success?')
+          return outputPath
+        }
+
         throw new Error(`Conversion failed for ${filePath}: ${error.message}`)
       }
     },
