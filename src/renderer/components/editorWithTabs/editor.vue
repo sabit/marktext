@@ -596,7 +596,10 @@ export default {
       bus.$on('switch-spellchecker-language', this.switchSpellcheckLanguage)
       bus.$on('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
       bus.$on('replace-misspelling', this.replaceMisspelling)
-      bus.$on('merge-documents', this.handleDocumentMerge)
+      bus.$on('merge-documents', () => {
+        console.log('🔔 Bus event merge-documents received, calling handleDocumentMerge')
+        this.handleDocumentMerge()
+      })
 
       this.editor.on('change', changes => {
         // WORKAROUND: "id: 'muya'"
@@ -1025,11 +1028,16 @@ export default {
     },
 
     async handleDocumentMerge () {
+      console.log('🔄 handleDocumentMerge called')
+
       // Check if document is saved
       const { currentFile } = this
       if (!currentFile.isSaved) {
         throw new Error('Please save the document before merging.')
       }
+
+      // Emit merge started event
+      bus.$emit('merge-started')
 
       // Put document into readonly mode
       this.editor.setOptions({ readOnly: true })
@@ -1052,6 +1060,7 @@ export default {
         const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
 
         // Show success message
+        console.log('✅ Merge completed successfully, showing notification')
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
@@ -1062,7 +1071,7 @@ export default {
         // Open the merged PDF
         // shell.openPath(mergedPdfPath)
       } catch (error) {
-        console.error('Document merge failed:', error)
+        console.error('❌ Document merge failed:', error)
         notice.notify({
           title: 'Document merge failed',
           type: 'error',
@@ -1072,6 +1081,9 @@ export default {
       } finally {
         // Restore readonly mode
         this.editor.setOptions({ readOnly: false })
+
+        // Emit merge completed event
+        bus.$emit('merge-completed')
       }
     },
 

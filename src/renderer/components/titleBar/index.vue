@@ -64,6 +64,17 @@
             <span class="text-center-vertical">{{ `${HASH[show].short} ${wordCount[show]}` }}</span>
           </div>
         </el-tooltip>
+        <!-- Merge Progress Indicator -->
+        <el-tooltip
+          v-if="mergeInProgress"
+          class="item"
+          content="Merging documents..."
+          placement="bottom-end"
+        >
+          <div class="merge-indicator">
+            <div class="merge-spinner"></div>
+          </div>
+        </el-tooltip>
       </div>
       <div
         v-if="titleBarStyle === 'custom' && !isFullScreen && !isOsx"
@@ -149,7 +160,11 @@ export default {
     active: Boolean,
     wordCount: Object,
     platform: String,
-    isSaved: Boolean
+    isSaved: Boolean,
+    mergeInProgress: {
+      type: Boolean,
+      default: false
+    }
   },
   computed: {
     ...mapState({
@@ -406,10 +421,27 @@ export default {
     fill: #ffffff
   }
 
-  .text-center-vertical {
-    display: inline-block;
-    vertical-align: middle;
-    line-height: normal;
+  .merge-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-left: 5px;
+  }
+
+  .merge-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--editorColor30);
+    border-top: 2px solid var(--themeColor);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 </style>
 

@@ -40,6 +40,7 @@ const actions = {
       bus.$emit('insert-filepath')
     })
     ipcRenderer.on('mt::merge-documents', () => {
+      console.log('📨 Received mt::merge-documents event, emitting merge-documents bus event')
       bus.$emit('merge-documents')
     })
   }

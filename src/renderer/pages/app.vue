@@ -12,6 +12,7 @@
         :word-count="wordCount"
         :platform="platform"
         :is-saved="isSaved"
+        :merge-in-progress="mergeInProgress"
       ></title-bar>
       <div class="editor-placeholder" v-if="!init"></div>
       <recent
@@ -71,6 +72,7 @@ export default {
   mixins: [loadingPageMixins],
   data () {
     return {
+      mergeInProgress: false
     }
   },
   computed: {
@@ -165,6 +167,10 @@ export default {
     // module: notification
     dispatch('LISTEN_FOR_NOTIFICATION')
 
+    // Listen for merge progress events
+    bus.$on('merge-started', this.onMergeStarted)
+    bus.$on('merge-completed', this.onMergeCompleted)
+
     // prevent Chromium's default behavior and try to open the first file
     window.addEventListener('dragover', e => {
       // Cancel to allow tab drag&drop.
@@ -196,6 +202,21 @@ export default {
       addStyles(style)
       this.hideLoadingPage()
     })
+  },
+  beforeDestroy () {
+    // Clean up event listeners
+    bus.$off('merge-started', this.onMergeStarted)
+    bus.$off('merge-completed', this.onMergeCompleted)
+  },
+  methods: {
+    onMergeStarted () {
+      console.log('🚀 Merge started event received')
+      this.mergeInProgress = true
+    },
+    onMergeCompleted () {
+      console.log('✅ Merge completed event received')
+      this.mergeInProgress = false
+    }
   }
 }
 </script>
