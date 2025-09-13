@@ -413,7 +413,11 @@ export default {
         const { editor, spellchecker, spellcheckerLanguage } = this
 
         // Set Muya's spellcheck container attribute.
-        editor.setOptions({ spellcheckEnabled: value })
+        if (editor) {
+          editor.setOptions({ spellcheckEnabled: value })
+        } else {
+          console.warn('Editor is null in spellcheckerEnabled watch, cannot set spellcheck options')
+        }
 
         // Disable native spell checker
         if (value) {
@@ -427,7 +431,11 @@ export default {
     spellcheckerNoUnderline: function (value, oldValue) {
       if (value !== oldValue) {
         // Set Muya's spellcheck container attribute.
-        this.editor.setOptions({ spellcheckEnabled: !value })
+        if (this.editor) {
+          this.editor.setOptions({ spellcheckEnabled: !value })
+        } else {
+          console.warn('Editor is null in spellcheckerNoUnderline watch, cannot set spellcheck options')
+        }
       }
     },
 
@@ -1037,10 +1045,19 @@ export default {
       bus.$emit('merge-started')
 
       // Put document into readonly mode
-      this.editor.setOptions({ readOnly: true })
+      console.log('Setting editor to readonly mode')
+      if (this.editor) {
+        this.editor.setOptions({ readOnly: true })
+        console.log('Editor set to readonly mode successfully')
+      } else {
+        console.warn('Editor is null, cannot set readonly mode')
+      }
 
       try {
         // Get markdown content
+        if (!this.editor) {
+          throw new Error('Editor is not available')
+        }
         const markdown = this.editor.getMarkdown()
 
         // Parse ordered lists and extract file links
@@ -1076,7 +1093,13 @@ export default {
         })
       } finally {
         // Restore readonly mode
-        this.editor.setOptions({ readOnly: false })
+        console.log('Restoring editor readonly mode')
+        if (this.editor) {
+          this.editor.setOptions({ readOnly: false })
+          console.log('Editor readonly mode restored successfully')
+        } else {
+          console.warn('Editor is null, cannot restore readonly mode')
+        }
 
         // Emit merge completed event
         bus.$emit('merge-completed')
@@ -1088,6 +1111,7 @@ export default {
       const sections = []
       let currentSection = null
       let inOrderedList = false
+      let nestingStack = [] // Track nesting levels and counters
 
       for (let i = 0; i < lines.length; i++) {
         const originalLine = lines[i]
@@ -1095,36 +1119,69 @@ export default {
 
         console.log(`Processing line ${i + 1}: "${originalLine}" (trimmed: "${line}")`)
 
-        // Check for ordered list items FIRST
-        const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/)
+        // Check for ordered list items with nesting support
+        const orderedListMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/)
         if (orderedListMatch) {
           console.log(`Found ordered list item: ${orderedListMatch[0]}`)
-          const [, , content] = orderedListMatch
+          const [, indent, number, content] = orderedListMatch
           inOrderedList = true
 
-          // Check if this is a new section (heading)
-          if (content.startsWith('#')) {
+          // Calculate nesting level based on indentation
+          const nestingLevel = Math.floor(indent.length / 4) // Assume 4 spaces per level
+          console.log(`Nesting level: ${nestingLevel}, indent length: ${indent.length}`)
+
+          // Update nesting stack
+          while (nestingStack.length > nestingLevel) {
+            nestingStack.pop()
+          }
+          if (nestingStack.length <= nestingLevel) {
+            while (nestingStack.length <= nestingLevel) {
+              nestingStack.push(0)
+            }
+          }
+          nestingStack[nestingLevel] = parseInt(number)
+
+          // Generate nested numbering (1.1, 1.2, 2.1, etc.)
+          const nestedNumber = nestingStack.slice(0, nestingLevel + 1).join('.')
+          console.log(`Generated nested number: ${nestedNumber}`)
+
+          // Extract text content without file links
+          let cleanContent = content
+
+          // Remove file links from content
+          cleanContent = cleanContent.replace(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/g, '').trim()
+
+          // Remove trailing whitespace and any remaining brackets
+          cleanContent = cleanContent.replace(/\s*\[.*\]\(.*\)\s*$/, '').trim()
+
+          console.log(`Clean content: "${cleanContent}"`)
+
+          // Check if this is a new section (heading or content)
+          if (cleanContent.startsWith('#')) {
             if (currentSection) {
               sections.push(currentSection)
             }
             currentSection = {
-              title: content.replace(/^#+\s*/, ''),
+              title: cleanContent.replace(/^#+\s*/, ''),
               docs: []
             }
-          } else {
-            // Check for file links
+          } else if (cleanContent) {
+            // This is a regular bullet item - create section with nested numbering
+            if (currentSection) {
+              sections.push(currentSection)
+            }
+            currentSection = {
+              title: `${nestedNumber} ${cleanContent}`,
+              docs: []
+            }
+
+            // Check for file links in the original content
             const fileLinkMatch = content.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
             if (fileLinkMatch) {
-              if (!currentSection) {
-                currentSection = {
-                  title: `Section ${sections.length + 1}`,
-                  docs: []
-                }
-              }
               currentSection.docs.push(fileLinkMatch[2])
             } else {
               // Ordered list item without file link - show error as per requirements
-              throw new Error('Some sections have missing document')
+              throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
             }
           }
         } else {
@@ -1149,6 +1206,7 @@ export default {
         sections.push(currentSection)
       }
 
+      console.log('Parsed sections:', sections)
       return sections
     },
 
@@ -1262,69 +1320,40 @@ export default {
       let globalPageCounter = 1
 
       // Load header/footer templates if available (moved here after finalDoc creation)
-      let templatePortraitDoc = null
-      let templateLandscapeDoc = null
-      let templatePortraitPage = null
-      let templateLandscapePage = null
+      let templatePortraitPath = null
+      let templateLandscapePath = null
 
       if (templateDirectory && fs.existsSync(templateDirectory)) {
         console.log('Template directory exists:', templateDirectory)
-        const portraitTemplatePath = path.join(templateDirectory, 'header_footer_portrait.pdf')
-        const landscapeTemplatePath = path.join(templateDirectory, 'header_footer_landscape.pdf')
+
+        // List all files in template directory for debugging
+        try {
+          const templateFiles = fs.readdirSync(templateDirectory)
+          console.log('Files in template directory:', templateFiles)
+        } catch (listError) {
+          console.warn('Could not list template directory files:', listError.message)
+        }
+
+        const portraitTemplatePath = path.join(templateDirectory, 'header_footer_portrait.docx')
+        const landscapeTemplatePath = path.join(templateDirectory, 'header_footer_landscape.docx')
 
         console.log('Portrait template path:', portraitTemplatePath)
         console.log('Landscape template path:', landscapeTemplatePath)
 
         if (fs.existsSync(portraitTemplatePath)) {
-          try {
-            console.log('Loading portrait template:', portraitTemplatePath)
-            const templatePortraitBytes = fs.readFileSync(portraitTemplatePath)
-            console.log(`Portrait template file size: ${templatePortraitBytes.length} bytes`)
-
-            templatePortraitDoc = await PDFDocument.load(templatePortraitBytes)
-            console.log('Portrait template PDF loaded successfully')
-
-            // Embed the page from the template document for later use
-            const embeddedPages = await finalDoc.embedPages(templatePortraitDoc.getPages())
-            console.log('Portrait template pages embedded to final doc:', embeddedPages)
-
-            if (embeddedPages && embeddedPages.length > 0 && embeddedPages[0]) {
-              templatePortraitPage = embeddedPages[0]
-              console.log('Portrait template page set successfully')
-            } else {
-              console.warn('Failed to embed portrait template page - embedPages returned invalid result')
-            }
-          } catch (error) {
-            console.error('Error loading portrait template:', error.message)
-            console.error('Portrait template path:', portraitTemplatePath)
-          }
+          console.log('Portrait DOCX template found:', portraitTemplatePath)
+          const portraitStats = fs.statSync(portraitTemplatePath)
+          console.log(`Portrait template size: ${portraitStats.size} bytes`)
+          templatePortraitPath = portraitTemplatePath
         } else {
           console.log('Portrait template not found:', portraitTemplatePath)
         }
 
         if (fs.existsSync(landscapeTemplatePath)) {
-          try {
-            console.log('Loading landscape template:', landscapeTemplatePath)
-            const templateLandscapeBytes = fs.readFileSync(landscapeTemplatePath)
-            console.log(`Landscape template file size: ${templateLandscapeBytes.length} bytes`)
-
-            templateLandscapeDoc = await PDFDocument.load(templateLandscapeBytes)
-            console.log('Landscape template PDF loaded successfully')
-
-            // Embed the page from the template document for later use
-            const embeddedPages = await finalDoc.embedPages(templateLandscapeDoc.getPages())
-            console.log('Landscape template pages embedded to final doc:', embeddedPages)
-
-            if (embeddedPages && embeddedPages.length > 0 && embeddedPages[0]) {
-              templateLandscapePage = embeddedPages[0]
-              console.log('Landscape template page set successfully')
-            } else {
-              console.warn('Failed to embed landscape template page - embedPages returned invalid result')
-            }
-          } catch (error) {
-            console.error('Error loading landscape template:', error.message)
-            console.error('Landscape template path:', landscapeTemplatePath)
-          }
+          console.log('Landscape DOCX template found:', landscapeTemplatePath)
+          const landscapeStats = fs.statSync(landscapeTemplatePath)
+          console.log(`Landscape template size: ${landscapeStats.size} bytes`)
+          templateLandscapePath = landscapeTemplatePath
         } else {
           console.log('Landscape template not found:', landscapeTemplatePath)
         }
@@ -1347,69 +1376,146 @@ export default {
           const pages = await finalDoc.copyPages(contentDoc, contentDoc.getPageIndices())
 
           for (const page of pages) {
+            // Add content page first
             finalDoc.addPage(page)
 
             // Apply template overlay if available
-            if (templatePortraitPage || templateLandscapePage) {
+            if (templatePortraitPath || templateLandscapePath) {
               const { width, height } = page.getSize()
               const orientation = width > height ? 'landscape' : 'portrait'
 
               // Select appropriate template
-              const templatePageToDraw = orientation === 'portrait' ? templatePortraitPage : templateLandscapePage
-              const templateDoc = orientation === 'portrait' ? templatePortraitDoc : templateLandscapeDoc
+              const templatePath = orientation === 'portrait' ? templatePortraitPath : templateLandscapePath
 
               console.log(`Page ${globalPageCounter} orientation: ${orientation}`)
-              console.log('Template page to draw:', templatePageToDraw)
-              console.log('Template page type:', typeof templatePageToDraw)
-              console.log('Template doc available:', !!templateDoc)
+              console.log('Template path:', templatePath)
 
-              if (templatePageToDraw && templateDoc && typeof templatePageToDraw === 'object') {
+              if (templatePath) {
                 try {
-                  // Draw template on top of content
-                  page.drawPage(templatePageToDraw)
-                  console.log(`Successfully applied template overlay to page ${globalPageCounter}`)
+                  // Patch the DOCX template with current page data
+                  const patchedDocxPath = await this.patchDocxTemplate(
+                    templatePath,
+                    section.title,
+                    globalPageCounter,
+                    totalPages
+                  )
 
-                  // Fill form fields if they exist
-                  try {
-                    const form = templateDoc.getForm()
+                  // Convert patched DOCX to PDF
+                  const { exec } = require('child_process')
+                  const { promisify } = require('util')
+                  const execAsync = promisify(exec)
 
-                    // Try to fill section field
-                    try {
-                      const sectionField = form.getTextField('SECTION_FIELD')
-                      if (sectionField) {
-                        sectionField.setText(section.title)
-                        console.log(`Set SECTION_FIELD to: ${section.title}`)
+                  const conversionTools = this.$store.state.preferences.conversionTools || []
+                  const docxTool = this.findConversionTool(patchedDocxPath, conversionTools)
+
+                  if (!docxTool) {
+                    console.warn(`No conversion tool found for DOCX file: ${patchedDocxPath}`)
+                  } else {
+                    const tempDir = require('os').tmpdir()
+                    const pdfOutputPath = await this.convertToPdf(patchedDocxPath, docxTool, tempDir, execAsync)
+
+                    // Load the converted PDF and apply as overlay
+                    if (fs.existsSync(pdfOutputPath)) {
+                      const overlayBytes = fs.readFileSync(pdfOutputPath)
+                      console.log('Overlay PDF loaded, size: ' + overlayBytes.length + ' bytes')
+
+                      try {
+                        const overlayDoc = await PDFDocument.load(overlayBytes)
+
+                        // Check if overlay document has pages
+                        const overlayPageCount = overlayDoc.getPageCount()
+                        console.log(`Overlay PDF has ${overlayPageCount} pages`)
+
+                        if (overlayPageCount > 0) {
+                          try {
+                            const copiedPages = await finalDoc.copyPages(overlayDoc, [0])
+                            console.log('Copied pages result:', copiedPages)
+                            console.log('Copied pages length:', copiedPages?.length)
+                            console.log('First page type:', copiedPages?.[0]?.constructor?.name)
+                            console.log('First page object:', copiedPages?.[0])
+
+                            // Try using embedPage on the overlay page directly
+                            console.log('Trying embedPage approach...')
+                            try {
+                              const overlayPageFromDoc = overlayDoc.getPages()[0]
+                              console.log('Overlay page from doc:', overlayPageFromDoc)
+                              console.log('Overlay page from doc type:', overlayPageFromDoc?.constructor?.name)
+
+                              const embeddedPage = await finalDoc.embedPage(overlayPageFromDoc)
+                              console.log('Embedded page result:', embeddedPage)
+                              console.log('Embedded page type:', embeddedPage?.constructor?.name)
+
+                              // Use the embedded page instead
+                              copiedPages[0] = embeddedPage
+                              console.log('Replaced copied page with properly embedded page')
+                            } catch (embedError) {
+                              console.warn('embedPage failed, continuing with copyPages result:', embedError.message)
+                            }
+
+                            if (copiedPages && copiedPages.length > 0 && copiedPages[0] != null) {
+                              const overlayPage = copiedPages[0]
+
+                              // Verify the overlay page is valid and not null/undefined
+                              if (overlayPage && typeof overlayPage === 'object' &&
+                                  overlayPage != null &&
+                                  (overlayPage.constructor.name === 'PDFEmbeddedPage' || overlayPage.constructor.name === 'PDFPage')) {
+                                // Draw overlay on top of content page
+                                console.log(`About to draw overlay page ${globalPageCounter}, overlayPage type: ${overlayPage.constructor.name}`)
+                                console.log('Overlay page before drawPage:', overlayPage)
+                                console.log(`Overlay page is NaN check: ${isNaN(overlayPage)}`)
+                                console.log(`Overlay page == null check: ${overlayPage == null}`)
+                                try {
+                                  page.drawPage(overlayPage)
+                                  console.log(`Successfully applied DOCX template overlay to page ${globalPageCounter}`)
+                                } catch (drawError) {
+                                  console.error(`Error drawing overlay page for page ${globalPageCounter}:`, drawError.message)
+                                  console.error('Draw error details:', drawError)
+                                  console.error('Overlay page object:', overlayPage)
+                                  console.error('Overlay page constructor:', overlayPage?.constructor?.name)
+                                  console.error('Page object being drawn on:', page)
+                                  console.error('Page constructor:', page?.constructor?.name)
+                                  // Don't rethrow - continue with next page
+                                }
+                              } else {
+                                console.warn(`Invalid overlay page object for page ${globalPageCounter}, type: ${typeof overlayPage}, constructor: ${overlayPage?.constructor?.name}, isNull: ${overlayPage == null}`)
+                              }
+                            } else {
+                              console.warn(`copyPages returned empty array or null for page ${globalPageCounter}`)
+                            }
+                          } catch (copyError) {
+                            console.error(`Error copying overlay page for page ${globalPageCounter}:`, copyError.message)
+                            console.error('Copy error details:', copyError)
+                          }
+                        } else {
+                          console.warn(`Overlay PDF has no pages, skipping overlay for page ${globalPageCounter}`)
+                        }
+                      } catch (loadError) {
+                        console.error(`Error loading overlay PDF for page ${globalPageCounter}:`, loadError.message)
+                        console.error('Load error details:', loadError)
                       }
-                    } catch (err) {
-                      console.log('SECTION_FIELD not found or not fillable')
-                    }
 
-                    // Try to fill page number field
-                    try {
-                      const pageField = form.getTextField('PAGE_NUMBER_FIELD')
-                      if (pageField) {
-                        pageField.setText(`Page ${globalPageCounter} of ${totalPages}`)
-                        console.log(`Set PAGE_NUMBER_FIELD to: Page ${globalPageCounter} of ${totalPages}`)
+                      // Clean up temporary files immediately after use
+                      try {
+                        if (fs.existsSync(patchedDocxPath)) {
+                          fs.unlinkSync(patchedDocxPath)
+                        }
+                        if (fs.existsSync(pdfOutputPath)) {
+                          fs.unlinkSync(pdfOutputPath)
+                        }
+                        console.log('Temporary files cleaned up')
+                      } catch (cleanupError) {
+                        console.warn('Could not clean up temporary files:', cleanupError.message)
                       }
-                    } catch (err) {
-                      console.log('PAGE_NUMBER_FIELD not found or not fillable')
+                    } else {
+                      console.warn(`Converted PDF not found: ${pdfOutputPath}`)
                     }
-
-                    // Flatten the form to make fields non-editable
-                    form.flatten()
-                    console.log(`Form flattened for page ${globalPageCounter}`)
-                  } catch (err) {
-                    console.warn(`Could not fill form fields on page ${globalPageCounter}:`, err.message)
                   }
-                } catch (drawError) {
-                  console.error(`Error drawing template on page ${globalPageCounter}:`, drawError.message)
-                  console.error('Template page type:', typeof templatePageToDraw)
-                  console.error('Template page value:', templatePageToDraw)
-                  console.error('Template doc type:', typeof templateDoc)
+                } catch (overlayError) {
+                  console.error(`Error applying template overlay to page ${globalPageCounter}:`, overlayError.message)
                 }
               } else {
-                console.log(`Skipping template overlay for page ${globalPageCounter} - template not available or invalid`)
-                console.log(`Available templates - Portrait: ${!!templatePortraitPage}, Landscape: ${!!templateLandscapePage}`)
+                console.log(`Skipping template overlay for page ${globalPageCounter} - template not available for ${orientation}`)
+                console.log(`Available templates - Portrait: ${!!templatePortraitPath}, Landscape: ${!!templateLandscapePath}`)
               }
             } else {
               console.log(`No template available for page ${globalPageCounter}`)
@@ -1683,6 +1789,98 @@ export default {
     handleScreenShot () {
       if (this.editor) {
         document.execCommand('paste')
+      }
+    },
+
+    // DOCX template patching using docxtemplater
+    async patchDocxTemplate (templatePath, sectionTitle, pageNumber, totalPages) {
+      const fs = require('fs')
+      const path = require('path')
+      const PizZip = require('pizzip')
+      const Docxtemplater = require('docxtemplater')
+
+      try {
+        console.log('Processing template for page: ' + pageNumber + '/' + totalPages)
+
+        // Read the template file
+        console.log(`Reading original template file: ${templatePath}`)
+
+        if (!fs.existsSync(templatePath)) {
+          throw new Error(`Template file does not exist: ${templatePath}`)
+        }
+
+        const content = fs.readFileSync(templatePath)
+        console.log(`Content loaded into memory, size: ${content.length} bytes`)
+
+        // Validate that we have content
+        if (!content || content.length === 0) {
+          throw new Error(`Template file is empty: ${templatePath}`)
+        }
+
+        console.log('File loaded successfully')
+
+        // Create a copy of the content to ensure we don't modify the original
+        const contentCopy = Buffer.from(content)
+        console.log('Created content copy for processing')
+
+        let zip
+        try {
+          zip = new PizZip(contentCopy)
+          console.log('Successfully created PizZip object')
+        } catch (zipError) {
+          console.error('Failed to create PizZip object:', zipError)
+          console.error('Content length:', content.length)
+          console.error('Content starts with:', content.subarray(0, 10).toString('hex'))
+          console.error('Content ends with:', content.subarray(Math.max(0, content.length - 10)).toString('hex'))
+
+          // Try to provide more specific error information
+          if (zipError.message.includes('central dir')) {
+            console.error('This appears to be a corrupted ZIP file with issues in the central directory')
+            console.error('The file may be:')
+            console.error('- A corrupted DOCX file')
+            console.error('- Not a valid DOCX file')
+            console.error('- A file that was partially downloaded or saved incorrectly')
+          }
+
+          throw new Error(`Failed to parse DOCX file as ZIP archive: ${zipError.message}`)
+        }
+
+        // Create docxtemplater instance with minimal configuration to preserve styling
+        const doc = new Docxtemplater(zip)
+
+        // Set template variables
+        doc.setData({
+          section_title: sectionTitle || '',
+          page_number: pageNumber || '',
+          total_pages: totalPages || '',
+          page_number_total: `${pageNumber || ''} of ${totalPages || ''}`
+        })
+
+        // Render the document
+        console.log('Rendering document with docxtemplater...')
+        doc.render()
+        console.log('Document rendered successfully')
+
+        // Generate the patched document
+        console.log('Generating patched document...')
+        const patchedContent = doc.getZip().generate({
+          type: 'nodebuffer',
+          compression: 'DEFLATE'
+        })
+
+        // Create temporary file path and write immediately for conversion
+        const tempDir = require('os').tmpdir()
+        const templateName = path.basename(templatePath, '.docx')
+        const patchedPath = path.join(tempDir, `${templateName}_patched_${pageNumber}.docx`)
+
+        // Write and use immediately, then clean up
+        fs.writeFileSync(patchedPath, patchedContent)
+
+        console.log('Using temporary DOCX for conversion')
+        return patchedPath
+      } catch (error) {
+        console.error('Error patching DOCX template:', error)
+        throw new Error(`Failed to patch DOCX template: ${error.message}`)
       }
     }
   },

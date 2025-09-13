@@ -12,7 +12,7 @@
             <label>Path to Templates:</label>
             <el-input
               v-model="templateDirectory"
-              placeholder="Path to directory containing header_footer_portrait.pdf and header_footer_landscape.pdf"
+              placeholder="Path to directory containing header_footer_portrait.docx and header_footer_landscape.docx"
               size="small"
               @change="updateTemplateDirectory"
             />
@@ -59,17 +59,19 @@
         <div class="help-text">
           <p><strong>Required Files:</strong></p>
           <ul>
-            <li><code>header_footer_portrait.pdf</code> - Template for portrait-oriented pages</li>
-            <li><code>header_footer_landscape.pdf</code> - Template for landscape-oriented pages</li>
+            <li><code>header_footer_portrait.docx</code> - Template for portrait-oriented pages</li>
+            <li><code>header_footer_landscape.docx</code> - Template for landscape-oriented pages</li>
           </ul>
 
-          <p><strong>Template Fields:</strong></p>
+          <p><strong>Template Placeholders:</strong></p>
           <ul>
-            <li><code>SECTION_FIELD</code> - Will be filled with the current section title</li>
-            <li><code>PAGE_NUMBER_FIELD</code> - Will be filled with "Page X of Y"</li>
+            <li><code>{section_title}</code> - Will be replaced with the current section title</li>
+            <li><code>{page_number}</code> - Will be replaced with the current page number</li>
+            <li><code>{total_pages}</code> - Will be replaced with the total number of pages</li>
+            <li><code>{page_number_total}</code> - Will be replaced with "Page X of Y" format</li>
           </ul>
 
-          <p><strong>Note:</strong> Templates should be PDF forms with text fields. The fields will be automatically filled and flattened during the merge process.</p>
+          <p><strong>Note:</strong> Templates should be DOCX files with placeholders using curly braces (e.g., {section_title}). The placeholders will be automatically replaced during the merge process and the document will be converted to PDF.</p>
         </div>
       </template>
     </compound>
@@ -100,12 +102,12 @@ export default {
     },
     portraitTemplateExists () {
       if (!this.templateDirectoryExists) return false
-      const portraitPath = path.join(this.templateDirectory, 'header_footer_portrait.pdf')
+      const portraitPath = path.join(this.templateDirectory, 'header_footer_portrait.docx')
       return fs.existsSync(portraitPath)
     },
     landscapeTemplateExists () {
       if (!this.templateDirectoryExists) return false
-      const landscapePath = path.join(this.templateDirectory, 'header_footer_landscape.pdf')
+      const landscapePath = path.join(this.templateDirectory, 'header_footer_landscape.docx')
       return fs.existsSync(landscapePath)
     }
   },
