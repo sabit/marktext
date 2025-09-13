@@ -592,6 +592,14 @@ class App {
       })
       return result
     })
+
+    ipcMain.handle('mt::dialog-select-directory', async (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory']
+      })
+      return result
+    })
   }
 }
 

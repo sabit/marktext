@@ -210,11 +210,9 @@ export default {
   },
   methods: {
     onMergeStarted () {
-      console.log('🚀 Merge started event received')
       this.mergeInProgress = true
     },
     onMergeCompleted () {
-      console.log('✅ Merge completed event received')
       this.mergeInProgress = false
     }
   }

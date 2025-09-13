@@ -76,6 +76,9 @@ const state = {
   // Conversion tools for document merge functionality
   conversionTools: [],
 
+  // Template directory for header/footer overlays
+  templateDirectory: '',
+
   // --------------------------------------------------------------------------
 
   // Edit modes of the current window (not part of persistent settings)
@@ -122,9 +125,12 @@ const actions = {
     ipcRenderer.send('mt::ask-for-user-preference')
     ipcRenderer.send('mt::ask-for-user-data')
 
-    ipcRenderer.on('mt::user-preference', (e, preferences) => {
-      commit('SET_USER_PREFERENCE', preferences)
-    })
+    // Set up listener for preference updates (only once)
+    if (!ipcRenderer.listenerCount('mt::user-preference')) {
+      ipcRenderer.on('mt::user-preference', (e, preferences) => {
+        commit('SET_USER_PREFERENCE', preferences)
+      })
+    }
   },
 
   SET_SINGLE_PREFERENCE ({ commit }, { type, value }) {

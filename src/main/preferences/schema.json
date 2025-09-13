@@ -442,5 +442,15 @@
       "required": ["name", "extensions", "path", "arguments"]
     },
     "default": []
+  },
+  "templateDirectory": {
+    "description": "Document Merge--Directory containing header/footer template PDFs.",
+    "type": "string",
+    "default": ""
+  },
+  "cliScript": {
+    "description": "General--Custom CLI script for external integrations.",
+    "type": "string",
+    "default": ""
   }
 }

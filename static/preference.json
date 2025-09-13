@@ -67,5 +67,7 @@
   "searchFollowSymlinks": true,
 
   "watcherUsePolling": false,
-  "conversionTools": []
+  "conversionTools": [],
+  "templateDirectory": "",
+  "cliScript": ""
 }

@@ -597,7 +597,6 @@ export default {
       bus.$on('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
       bus.$on('replace-misspelling', this.replaceMisspelling)
       bus.$on('merge-documents', () => {
-        console.log('🔔 Bus event merge-documents received, calling handleDocumentMerge')
         this.handleDocumentMerge()
       })
 
@@ -1028,8 +1027,6 @@ export default {
     },
 
     async handleDocumentMerge () {
-      console.log('🔄 handleDocumentMerge called')
-
       // Check if document is saved
       const { currentFile } = this
       if (!currentFile.isSaved) {
@@ -1060,7 +1057,6 @@ export default {
         const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
 
         // Show success message
-        console.log('✅ Merge completed successfully, showing notification')
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
@@ -1071,7 +1067,7 @@ export default {
         // Open the merged PDF
         // shell.openPath(mergedPdfPath)
       } catch (error) {
-        console.error('❌ Document merge failed:', error)
+        console.error('Document merge failed:', error)
         notice.notify({
           title: 'Document merge failed',
           type: 'error',
@@ -1157,7 +1153,6 @@ export default {
     },
 
     async convertAndMergeDocuments (sections, basePath) {
-      const { PDFDocument } = require('pdf-lib')
       const path = require('path')
       const { exec } = require('child_process')
       const { promisify } = require('util')
@@ -1165,7 +1160,6 @@ export default {
 
       const baseDir = path.dirname(basePath)
       const outputDir = baseDir
-      const mergedPdfPath = path.join(outputDir, 'merged_document.pdf')
 
       // Get conversion tools from preferences
       const conversionTools = this.$store.state.preferences.conversionTools || []
@@ -1232,27 +1226,204 @@ export default {
       // Debug output as per requirements
       console.log('Merge list:', mergeList)
 
-      // Merge all PDFs
-      const finalDoc = await PDFDocument.create()
+      // Get template directory from preferences
+      const templateDirectory = this.$store.state.preferences.templateDirectory || ''
 
+      // Merge all PDFs with header/footer overlay
+      const mergedPdfPath = await this.mergeWithTemplates(mergeList, baseDir, templateDirectory)
+
+      return mergedPdfPath
+    },
+
+    async mergeWithTemplates (mergeList, baseDir, templateDirectory) {
+      const { PDFDocument } = require('pdf-lib')
+      const path = require('path')
+      const fs = require('fs')
+
+      console.log('mergeWithTemplates called with templateDirectory:', templateDirectory)
+
+      const mergedPdfPath = path.join(baseDir, 'merged_document.pdf')
+
+      // First pass: calculate total pages
+      let totalPages = 0
       for (const section of mergeList) {
         for (const pdfPath of section.pdfs) {
-          // Check if PDF file exists before trying to read it
+          if (fs.existsSync(pdfPath)) {
+            const contentBytes = fs.readFileSync(pdfPath)
+            const doc = await PDFDocument.load(contentBytes)
+            totalPages += doc.getPageCount()
+          }
+        }
+      }
+
+      console.log(`Total pages to merge: ${totalPages}`)
+
+      const finalDoc = await PDFDocument.create()
+      let globalPageCounter = 1
+
+      // Load header/footer templates if available (moved here after finalDoc creation)
+      let templatePortraitDoc = null
+      let templateLandscapeDoc = null
+      let templatePortraitPage = null
+      let templateLandscapePage = null
+
+      if (templateDirectory && fs.existsSync(templateDirectory)) {
+        console.log('Template directory exists:', templateDirectory)
+        const portraitTemplatePath = path.join(templateDirectory, 'header_footer_portrait.pdf')
+        const landscapeTemplatePath = path.join(templateDirectory, 'header_footer_landscape.pdf')
+
+        console.log('Portrait template path:', portraitTemplatePath)
+        console.log('Landscape template path:', landscapeTemplatePath)
+
+        if (fs.existsSync(portraitTemplatePath)) {
+          try {
+            console.log('Loading portrait template:', portraitTemplatePath)
+            const templatePortraitBytes = fs.readFileSync(portraitTemplatePath)
+            console.log(`Portrait template file size: ${templatePortraitBytes.length} bytes`)
+
+            templatePortraitDoc = await PDFDocument.load(templatePortraitBytes)
+            console.log('Portrait template PDF loaded successfully')
+
+            // Embed the page from the template document for later use
+            const embeddedPages = await finalDoc.embedPages(templatePortraitDoc.getPages())
+            console.log('Portrait template pages embedded to final doc:', embeddedPages)
+
+            if (embeddedPages && embeddedPages.length > 0 && embeddedPages[0]) {
+              templatePortraitPage = embeddedPages[0]
+              console.log('Portrait template page set successfully')
+            } else {
+              console.warn('Failed to embed portrait template page - embedPages returned invalid result')
+            }
+          } catch (error) {
+            console.error('Error loading portrait template:', error.message)
+            console.error('Portrait template path:', portraitTemplatePath)
+          }
+        } else {
+          console.log('Portrait template not found:', portraitTemplatePath)
+        }
+
+        if (fs.existsSync(landscapeTemplatePath)) {
+          try {
+            console.log('Loading landscape template:', landscapeTemplatePath)
+            const templateLandscapeBytes = fs.readFileSync(landscapeTemplatePath)
+            console.log(`Landscape template file size: ${templateLandscapeBytes.length} bytes`)
+
+            templateLandscapeDoc = await PDFDocument.load(templateLandscapeBytes)
+            console.log('Landscape template PDF loaded successfully')
+
+            // Embed the page from the template document for later use
+            const embeddedPages = await finalDoc.embedPages(templateLandscapeDoc.getPages())
+            console.log('Landscape template pages embedded to final doc:', embeddedPages)
+
+            if (embeddedPages && embeddedPages.length > 0 && embeddedPages[0]) {
+              templateLandscapePage = embeddedPages[0]
+              console.log('Landscape template page set successfully')
+            } else {
+              console.warn('Failed to embed landscape template page - embedPages returned invalid result')
+            }
+          } catch (error) {
+            console.error('Error loading landscape template:', error.message)
+            console.error('Landscape template path:', landscapeTemplatePath)
+          }
+        } else {
+          console.log('Landscape template not found:', landscapeTemplatePath)
+        }
+      } else {
+        console.log('No template directory specified or directory does not exist')
+      }
+
+      for (const section of mergeList) {
+        console.log(`Processing section: ${section.title}`)
+
+        for (const pdfPath of section.pdfs) {
           if (!fs.existsSync(pdfPath)) {
-            throw new Error(`PDF file does not exist for merging: ${pdfPath}`)
+            console.warn(`PDF file does not exist, skipping: ${pdfPath}`)
+            continue
           }
 
-          const pdfBytes = fs.readFileSync(pdfPath)
-          const pdfDoc = await PDFDocument.load(pdfBytes)
-          const pages = await finalDoc.copyPages(pdfDoc, pdfDoc.getPageIndices())
+          console.log(`Processing PDF: ${pdfPath}`)
+          const contentBytes = fs.readFileSync(pdfPath)
+          const contentDoc = await PDFDocument.load(contentBytes)
+          const pages = await finalDoc.copyPages(contentDoc, contentDoc.getPageIndices())
 
-          pages.forEach(page => finalDoc.addPage(page))
+          for (const page of pages) {
+            finalDoc.addPage(page)
+
+            // Apply template overlay if available
+            if (templatePortraitPage || templateLandscapePage) {
+              const { width, height } = page.getSize()
+              const orientation = width > height ? 'landscape' : 'portrait'
+
+              // Select appropriate template
+              const templatePageToDraw = orientation === 'portrait' ? templatePortraitPage : templateLandscapePage
+              const templateDoc = orientation === 'portrait' ? templatePortraitDoc : templateLandscapeDoc
+
+              console.log(`Page ${globalPageCounter} orientation: ${orientation}`)
+              console.log('Template page to draw:', templatePageToDraw)
+              console.log('Template page type:', typeof templatePageToDraw)
+              console.log('Template doc available:', !!templateDoc)
+
+              if (templatePageToDraw && templateDoc && typeof templatePageToDraw === 'object') {
+                try {
+                  // Draw template on top of content
+                  page.drawPage(templatePageToDraw)
+                  console.log(`Successfully applied template overlay to page ${globalPageCounter}`)
+
+                  // Fill form fields if they exist
+                  try {
+                    const form = templateDoc.getForm()
+
+                    // Try to fill section field
+                    try {
+                      const sectionField = form.getTextField('SECTION_FIELD')
+                      if (sectionField) {
+                        sectionField.setText(section.title)
+                        console.log(`Set SECTION_FIELD to: ${section.title}`)
+                      }
+                    } catch (err) {
+                      console.log('SECTION_FIELD not found or not fillable')
+                    }
+
+                    // Try to fill page number field
+                    try {
+                      const pageField = form.getTextField('PAGE_NUMBER_FIELD')
+                      if (pageField) {
+                        pageField.setText(`Page ${globalPageCounter} of ${totalPages}`)
+                        console.log(`Set PAGE_NUMBER_FIELD to: Page ${globalPageCounter} of ${totalPages}`)
+                      }
+                    } catch (err) {
+                      console.log('PAGE_NUMBER_FIELD not found or not fillable')
+                    }
+
+                    // Flatten the form to make fields non-editable
+                    form.flatten()
+                    console.log(`Form flattened for page ${globalPageCounter}`)
+                  } catch (err) {
+                    console.warn(`Could not fill form fields on page ${globalPageCounter}:`, err.message)
+                  }
+                } catch (drawError) {
+                  console.error(`Error drawing template on page ${globalPageCounter}:`, drawError.message)
+                  console.error('Template page type:', typeof templatePageToDraw)
+                  console.error('Template page value:', templatePageToDraw)
+                  console.error('Template doc type:', typeof templateDoc)
+                }
+              } else {
+                console.log(`Skipping template overlay for page ${globalPageCounter} - template not available or invalid`)
+                console.log(`Available templates - Portrait: ${!!templatePortraitPage}, Landscape: ${!!templateLandscapePage}`)
+              }
+            } else {
+              console.log(`No template available for page ${globalPageCounter}`)
+            }
+
+            globalPageCounter++
+          }
         }
       }
 
       const mergedBytes = await finalDoc.save()
       fs.writeFileSync(mergedPdfPath, mergedBytes)
 
+      console.log(`Merged PDF created: ${mergedPdfPath} (Total pages: ${totalPages})`)
       return mergedPdfPath
     },
 
