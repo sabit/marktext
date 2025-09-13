@@ -20,6 +20,36 @@ I want to implement a command under File->Export that will do the following:
   - set the directory of the current active editor's file as working directory; all copy operations are destined here
   - if source (docs) is already PDF, just copy
   - convert the non-PDF documents to PDF using the tools in Conversion Tools preferences. Preserve the original document names in the filename
-  - do not convert/copy if output file already exists and newer than source 
+  - do not convert/copy if output file already exists and newer than source
 - iterate over the mergeList and merge all the PDFs maintaining the order in the ordered list. Use pdf-lib for PDF handling. The algorithm is given in sample-runner.js (don't use the existing export system, it is not appropriate. This one is standalone.)
+
+
+## PDF Page Resizing Feature
+
+The document merge system now includes automatic PDF page resizing functionality:
+
+### How it works:
+- When processing PDF documents during merge operations, each page is checked for size
+- If a page is not A4 sized (595.28 x 841.89 points at 72 DPI), it gets automatically resized
+- The resizing maintains the original aspect ratio while fitting the content within A4 dimensions
+- Both portrait and landscape orientations are supported
+
+### Configuration:
+- The feature is controlled by a preference setting: `resizePagesToA4`
+- Default value: `true` (enabled)
+- When disabled, pages keep their original sizes
+- Can be configured in the preferences pane
+
+### Technical Details:
+- Uses pdf-lib's `page.setSize()` method for resizing
+- A4 dimensions: 595.28 x 841.89 points (210mm x 297mm at 72 DPI)
+- Tolerance of 5 points for determining if resizing is needed
+- Scaling factor is calculated to fit content entirely within A4 bounds
+- Error handling ensures merge continues even if individual page resizing fails
+
+### Benefits:
+- Ensures consistent document formatting across different source PDFs
+- Prevents layout issues when applying templates or overlays
+- Maintains readability by preserving aspect ratios
+- Optional feature that can be disabled if original sizes are preferred
 

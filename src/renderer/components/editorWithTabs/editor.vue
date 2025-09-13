@@ -1373,21 +1373,37 @@ export default {
           console.log(`Processing PDF: ${pdfPath}`)
           const contentBytes = fs.readFileSync(pdfPath)
           const contentDoc = await PDFDocument.load(contentBytes)
-          const pages = await finalDoc.copyPages(contentDoc, contentDoc.getPageIndices())
 
-          for (const page of pages) {
-            // Add content page first
-            finalDoc.addPage(page)
+          // Process each page: resize content and overlay on A4 page
+          const sourcePages = contentDoc.getPages()
+          for (let i = 0; i < sourcePages.length; i++) {
+            const sourcePage = sourcePages[i]
+            const pageNumber = globalPageCounter + i
 
-            // Apply template overlay if available
+            // Resize the source page content to fit within A4
+            this.resizePageToA4(sourcePage, pageNumber)
+
+            // Create A4 page with resized content overlaid
+            const a4Page = await this.createA4PageWithContent(sourcePage, pageNumber, finalDoc)
+            console.log(`Created A4 page ${pageNumber} with overlaid content`)
+
+            // Verify the A4 page was created correctly
+            if (a4Page) {
+              const { width: a4Width, height: a4Height } = a4Page.getSize()
+              console.log(`A4 page ${pageNumber} final size: ${a4Width}x${a4Height} points`)
+            } else {
+              console.error(`Failed to create A4 page ${pageNumber}`)
+            }
+
+            // Apply template overlay to the A4 page if available
             if (templatePortraitPath || templateLandscapePath) {
-              const { width, height } = page.getSize()
+              const { width, height } = a4Page.getSize()
               const orientation = width > height ? 'landscape' : 'portrait'
 
               // Select appropriate template
               const templatePath = orientation === 'portrait' ? templatePortraitPath : templateLandscapePath
 
-              console.log(`Page ${globalPageCounter} orientation: ${orientation}`)
+              console.log(`Page ${pageNumber} orientation: ${orientation}`)
               console.log('Template path:', templatePath)
 
               if (templatePath) {
@@ -1396,7 +1412,7 @@ export default {
                   const patchedDocxPath = await this.patchDocxTemplate(
                     templatePath,
                     section.title,
-                    globalPageCounter,
+                    pageNumber,
                     totalPages
                   )
 
@@ -1459,38 +1475,38 @@ export default {
                               if (overlayPage && typeof overlayPage === 'object' &&
                                   overlayPage != null &&
                                   (overlayPage.constructor.name === 'PDFEmbeddedPage' || overlayPage.constructor.name === 'PDFPage')) {
-                                // Draw overlay on top of content page
-                                console.log(`About to draw overlay page ${globalPageCounter}, overlayPage type: ${overlayPage.constructor.name}`)
+                                // Draw overlay on top of the A4 page
+                                console.log(`About to draw overlay page ${pageNumber}, overlayPage type: ${overlayPage.constructor.name}`)
                                 console.log('Overlay page before drawPage:', overlayPage)
                                 console.log(`Overlay page is NaN check: ${isNaN(overlayPage)}`)
                                 console.log(`Overlay page == null check: ${overlayPage == null}`)
                                 try {
-                                  page.drawPage(overlayPage)
-                                  console.log(`Successfully applied DOCX template overlay to page ${globalPageCounter}`)
+                                  a4Page.drawPage(overlayPage)
+                                  console.log(`Successfully applied DOCX template overlay to page ${pageNumber}`)
                                 } catch (drawError) {
-                                  console.error(`Error drawing overlay page for page ${globalPageCounter}:`, drawError.message)
+                                  console.error(`Error drawing overlay page for page ${pageNumber}:`, drawError.message)
                                   console.error('Draw error details:', drawError)
                                   console.error('Overlay page object:', overlayPage)
                                   console.error('Overlay page constructor:', overlayPage?.constructor?.name)
-                                  console.error('Page object being drawn on:', page)
-                                  console.error('Page constructor:', page?.constructor?.name)
+                                  console.error('A4 page object being drawn on:', a4Page)
+                                  console.error('A4 page constructor:', a4Page?.constructor?.name)
                                   // Don't rethrow - continue with next page
                                 }
                               } else {
-                                console.warn(`Invalid overlay page object for page ${globalPageCounter}, type: ${typeof overlayPage}, constructor: ${overlayPage?.constructor?.name}, isNull: ${overlayPage == null}`)
+                                console.warn(`Invalid overlay page object for page ${pageNumber}, type: ${typeof overlayPage}, constructor: ${overlayPage?.constructor?.name}, isNull: ${overlayPage == null}`)
                               }
                             } else {
-                              console.warn(`copyPages returned empty array or null for page ${globalPageCounter}`)
+                              console.warn(`copyPages returned empty array or null for page ${pageNumber}`)
                             }
                           } catch (copyError) {
-                            console.error(`Error copying overlay page for page ${globalPageCounter}:`, copyError.message)
+                            console.error(`Error copying overlay page for page ${pageNumber}:`, copyError.message)
                             console.error('Copy error details:', copyError)
                           }
                         } else {
-                          console.warn(`Overlay PDF has no pages, skipping overlay for page ${globalPageCounter}`)
+                          console.warn(`Overlay PDF has no pages, skipping overlay for page ${pageNumber}`)
                         }
                       } catch (loadError) {
-                        console.error(`Error loading overlay PDF for page ${globalPageCounter}:`, loadError.message)
+                        console.error(`Error loading overlay PDF for page ${pageNumber}:`, loadError.message)
                         console.error('Load error details:', loadError)
                       }
 
@@ -1511,14 +1527,14 @@ export default {
                     }
                   }
                 } catch (overlayError) {
-                  console.error(`Error applying template overlay to page ${globalPageCounter}:`, overlayError.message)
+                  console.error(`Error applying template overlay to page ${pageNumber}:`, overlayError.message)
                 }
               } else {
-                console.log(`Skipping template overlay for page ${globalPageCounter} - template not available for ${orientation}`)
+                console.log(`Skipping template overlay for page ${pageNumber} - template not available for ${orientation}`)
                 console.log(`Available templates - Portrait: ${!!templatePortraitPath}, Landscape: ${!!templateLandscapePath}`)
               }
             } else {
-              console.log(`No template available for page ${globalPageCounter}`)
+              console.log(`No template available for page ${pageNumber}`)
             }
 
             globalPageCounter++
@@ -1789,6 +1805,137 @@ export default {
     handleScreenShot () {
       if (this.editor) {
         document.execCommand('paste')
+      }
+    },
+
+    // Resize PDF page to A4 format while maintaining aspect ratio
+    resizePageToA4 (page, pageNumber) {
+      // Check if resizing is enabled in preferences
+      const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false // Default to true
+      if (!resizeEnabled) {
+        console.log(`Page ${pageNumber} resizing disabled in preferences, keeping original size`)
+        return false
+      }
+
+      const { width, height } = page.getSize()
+      console.log(`Page ${pageNumber} original size: ${width}x${height} points`)
+
+      // A4 dimensions in points (72 DPI): 595.28 x 841.89
+      const A4_WIDTH = 595.28
+      const A4_HEIGHT = 841.89
+
+      // Check if page needs resizing (with small tolerance for rounding)
+      const tolerance = 5 // points
+      const needsResize = Math.abs(width - A4_WIDTH) > tolerance || Math.abs(height - A4_HEIGHT) > tolerance
+
+      if (!needsResize) {
+        console.log(`Page ${pageNumber} is already A4 sized, no resizing needed`)
+        return false
+      }
+
+      console.log(`Page ${pageNumber} needs resizing to A4 format`)
+
+      try {
+        // Always target A4 dimensions regardless of original orientation
+        // This ensures all pages are exactly the same size for consistent overlay positioning
+        const targetWidth = A4_WIDTH
+        const targetHeight = A4_HEIGHT
+
+        // Calculate scale factors for both dimensions
+        const scaleX = targetWidth / width
+        const scaleY = targetHeight / height
+
+        // Use the smaller scale to ensure content fits within A4 bounds
+        const scale = Math.min(scaleX, scaleY)
+
+        // Calculate new dimensions
+        const newWidth = width * scale
+        const newHeight = height * scale
+
+        console.log(`Scaling page ${pageNumber} by factor ${scale.toFixed(3)} to ${newWidth.toFixed(2)}x${newHeight.toFixed(2)} points`)
+        console.log(`Target A4 dimensions: ${targetWidth}x${targetHeight} points`)
+
+        // Resize the page to the scaled dimensions
+        page.setSize(newWidth, newHeight)
+        console.log(`Successfully resized page ${pageNumber} to fit within A4 format`)
+        return true
+      } catch (resizeError) {
+        console.error(`Error resizing page ${pageNumber}:`, resizeError.message)
+        console.log(`Continuing with original page size for page ${pageNumber}`)
+        return false
+      }
+    },
+
+    // Create an A4 page with resized content overlaid
+    async createA4PageWithContent (sourcePage, pageNumber, finalDoc) {
+      try {
+        // A4 dimensions in points (72 DPI): 595.28 x 841.89
+        const A4_WIDTH = 595.28
+        const A4_HEIGHT = 841.89
+
+        // Create a new A4 page (but don't add it to document yet)
+        const a4Page = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+        console.log(`Created new A4 page ${pageNumber} with dimensions: ${A4_WIDTH}x${A4_HEIGHT} points`)
+
+        // Get the source page dimensions after resizing
+        const { width: sourceWidth, height: sourceHeight } = sourcePage.getSize()
+        console.log(`Source page ${pageNumber} dimensions: ${sourceWidth}x${sourceHeight} points`)
+
+        // Calculate position to center the content on the A4 page
+        const xOffset = (A4_WIDTH - sourceWidth) / 2
+        const yOffset = (A4_HEIGHT - sourceHeight) / 2
+
+        console.log(`Centering content at offset: (${xOffset.toFixed(2)}, ${yOffset.toFixed(2)})`)
+
+        // Embed the source page into the final document before drawing
+        console.log(`Embedding source page ${pageNumber} into final document...`)
+        const embeddedSourcePage = await finalDoc.embedPage(sourcePage)
+        console.log(`Successfully embedded source page ${pageNumber}`)
+
+        // Draw the embedded source page content onto the A4 page
+        a4Page.drawPage(embeddedSourcePage, {
+          x: xOffset,
+          y: yOffset,
+          width: sourceWidth,
+          height: sourceHeight
+        })
+
+        console.log(`Successfully overlaid content onto A4 page ${pageNumber}`)
+        console.log(`A4 page now has content from source page ${pageNumber}`)
+
+        // Verify the page was created successfully
+        const finalPageCount = finalDoc.getPageCount()
+        console.log(`Final document now has ${finalPageCount} pages after adding A4 page ${pageNumber}`)
+
+        return a4Page
+      } catch (error) {
+        console.error(`Error creating A4 page with content for page ${pageNumber}:`, error.message)
+        // Fallback: embed and add the source page as-is
+        console.log(`Falling back to embedding and adding source page ${pageNumber} as-is`)
+        try {
+          // A4 dimensions in points (72 DPI): 595.28 x 841.89
+          const A4_WIDTH = 595.28
+          const A4_HEIGHT = 841.89
+
+          // Get source page dimensions
+          const { width: sourceWidth, height: sourceHeight } = sourcePage.getSize()
+
+          const embeddedSourcePage = await finalDoc.embedPage(sourcePage)
+          const fallbackPage = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+          fallbackPage.drawPage(embeddedSourcePage, {
+            x: (A4_WIDTH - sourceWidth) / 2,
+            y: (A4_HEIGHT - sourceHeight) / 2,
+            width: sourceWidth,
+            height: sourceHeight
+          })
+          return fallbackPage
+        } catch (fallbackError) {
+          console.error(`Fallback also failed for page ${pageNumber}:`, fallbackError.message)
+          // Last resort: create an empty A4 page
+          const A4_WIDTH = 595.28
+          const A4_HEIGHT = 841.89
+          return finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+        }
       }
     },
 
