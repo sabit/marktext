@@ -1440,7 +1440,7 @@ export default {
 
     // Generate clickable Table of Contents page (supports multi-page)
     async generateTableOfContents (mergeList, finalDoc) {
-      const { PDFDocument } = require('pdf-lib')
+      const { PDFDocument, rgb } = require('pdf-lib')
 
       // A4 dimensions in points (72 DPI): 595.28 x 841.89
       const A4_WIDTH = 595.28
@@ -1559,22 +1559,60 @@ export default {
         }
 
         try {
-          // Draw section title
-          tocPage.drawText(entry.title, {
-            x: 50 + entry.indent,
+          // Draw dot leaders across the entire line
+          const dotsPerLine = Math.floor((A4_WIDTH - 100) / 3) // Approximate dots that fit
+          const fullDotLine = '.'.repeat(dotsPerLine)
+
+          tocPage.drawText(fullDotLine, {
+            x: 50,
             y: entry.yPosition,
             size: 12,
             font: await finalDoc.embedFont('Helvetica')
           })
 
-          // Draw page number (right-aligned)
-          const pageNumText = entry.pageNumber.toString()
-          const pageNumWidth = pageNumText.length * 6 // Approximate width
-          tocPage.drawText(pageNumText, {
-            x: A4_WIDTH - 50 - pageNumWidth,
+          // Draw section title with white background to overlay dots
+          const titleFont = await finalDoc.embedFont('Helvetica')
+          const titleWidth = entry.title.length * 6 // Approximate width
+
+          // White rectangle behind title (starts from left margin to cover dots before indented title)
+          tocPage.drawRectangle({
+            x: 50 - 2, // Start from left margin
+            y: entry.yPosition - 2,
+            width: entry.indent + titleWidth + 6, // Cover indent area + title + padding
+            height: 14,
+            color: rgb(1, 1, 1), // White background
+            borderWidth: 0
+          })
+
+          tocPage.drawText(entry.title, {
+            x: 50 + entry.indent,
             y: entry.yPosition,
             size: 12,
-            font: await finalDoc.embedFont('Helvetica')
+            font: titleFont,
+            color: rgb(0, 0, 0) // Black text
+          })
+
+          // Draw page number with white background to overlay dots
+          const pageNumText = entry.pageNumber.toString()
+          const pageNumWidth = pageNumText.length * 6
+          const pageNumX = A4_WIDTH - 50 - pageNumWidth
+
+          // White rectangle behind page number (extends all the way to right margin)
+          tocPage.drawRectangle({
+            x: pageNumX - 2,
+            y: entry.yPosition - 2,
+            width: A4_WIDTH - (pageNumX - 2), // Extend to the very right edge of the page
+            height: 14,
+            color: rgb(1, 1, 1), // White background
+            borderWidth: 0
+          })
+
+          tocPage.drawText(pageNumText, {
+            x: pageNumX,
+            y: entry.yPosition,
+            size: 12,
+            font: await finalDoc.embedFont('Helvetica'),
+            color: rgb(0, 0, 0) // Black text
           })
         } catch (drawError) {
           console.error('Failed to draw ToC entry:', entry.title, drawError.message)
