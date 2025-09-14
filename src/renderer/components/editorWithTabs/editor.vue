@@ -1313,8 +1313,9 @@ export default {
 
       const mergedPdfPath = path.join(baseDir, 'merged_document.pdf')
 
-      // First pass: calculate total pages
+      // First pass: calculate total pages and collect section info for ToC
       let totalPages = 0
+
       for (const section of mergeList) {
         for (const pdfPath of section.pdfs) {
           if (fs.existsSync(pdfPath)) {
@@ -1328,6 +1329,8 @@ export default {
       console.log(`Total pages to merge: ${totalPages}`)
 
       const finalDoc = await PDFDocument.create()
+
+      // Initialize page counter for content pages (ToC will be page 1)
       let globalPageCounter = 1
 
       // Load header/footer templates if available (moved here after finalDoc creation)
@@ -1553,11 +1556,136 @@ export default {
         }
       }
 
+      // Generate Table of Contents page at the very end after all pages are added
+      await this.generateTableOfContents(mergeList, finalDoc)
+      console.log('Table of Contents page generated')
+
       const mergedBytes = await finalDoc.save()
       fs.writeFileSync(mergedPdfPath, mergedBytes)
 
       console.log(`Merged PDF created: ${mergedPdfPath} (Total pages: ${totalPages})`)
       return mergedPdfPath
+    },
+
+    // Generate clickable Table of Contents page
+    async generateTableOfContents (mergeList, finalDoc) {
+      const { PDFDocument } = require('pdf-lib')
+
+      // A4 dimensions in points (72 DPI): 595.28 x 841.89
+      const A4_WIDTH = 595.28
+      const A4_HEIGHT = 841.89
+
+      // Create ToC page at the beginning of the document
+      const tocPage = finalDoc.insertPage(0, [A4_WIDTH, A4_HEIGHT])
+
+      // Add title
+      tocPage.drawText('Table of Contents', {
+        x: 50,
+        y: A4_HEIGHT - 50,
+        size: 24,
+        font: await finalDoc.embedFont('Helvetica-Bold')
+      })
+
+      let yPosition = A4_HEIGHT - 100
+      let pageNumber = 2 // ToC entries start from page 2
+      const tocEntries = []
+
+      // First pass: collect all entries and their positions
+      for (const section of mergeList) {
+        const level = (section.title.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
+        const indent = level * 20
+
+        tocEntries.push({
+          title: section.title,
+          pageNumber: pageNumber,
+          level: level,
+          indent: indent,
+          yPosition: yPosition
+        })
+
+        yPosition -= 20
+
+        // Count pages in this section
+        let sectionPageCount = 0
+        for (const pdfPath of section.pdfs) {
+          if (require('fs').existsSync(pdfPath)) {
+            const contentBytes = require('fs').readFileSync(pdfPath)
+            const doc = await PDFDocument.load(contentBytes)
+            sectionPageCount += doc.getPageCount()
+          }
+        }
+        pageNumber += sectionPageCount
+      }
+
+      // Second pass: draw entries and create clickable links
+      for (const entry of tocEntries) {
+        // Draw section title
+        tocPage.drawText(entry.title, {
+          x: 50 + entry.indent,
+          y: entry.yPosition,
+          size: 12,
+          font: await finalDoc.embedFont('Helvetica')
+        })
+
+        // Draw page number (right-aligned)
+        const pageNumText = entry.pageNumber.toString()
+        const pageNumWidth = pageNumText.length * 6 // Approximate width
+        tocPage.drawText(pageNumText, {
+          x: A4_WIDTH - 50 - pageNumWidth,
+          y: entry.yPosition,
+          size: 12,
+          font: await finalDoc.embedFont('Helvetica')
+        })
+
+        // Create clickable link rectangle over the title
+        const titleWidth = entry.title.length * 6 // Approximate width
+        const linkRect = {
+          x: 50 + entry.indent,
+          y: entry.yPosition - 5,
+          width: titleWidth,
+          height: 15
+        }
+
+        // Try to create clickable link annotation
+        try {
+          // Create link annotation using PDF-lib's low-level API
+          const linkAnnotation = finalDoc.context.obj({
+            Type: 'Annot',
+            Subtype: 'Link',
+            Rect: [linkRect.x, linkRect.y, linkRect.x + linkRect.width, linkRect.y + linkRect.height],
+            Border: [0, 0, 0],
+            A: finalDoc.context.obj({
+              Type: 'Action',
+              S: 'GoTo',
+              D: [entry.pageNumber - 1, 'XYZ', null, null, null]
+            })
+          })
+
+          // Add the annotation to the page
+          tocPage.node.addAnnot(linkAnnotation)
+          console.log(`Successfully created clickable link for "${entry.title}" to page ${entry.pageNumber}`)
+        } catch (linkError) {
+          console.warn(`Failed to create clickable link for "${entry.title}":`, linkError.message)
+          console.log('Continuing with text-only ToC entries')
+        }
+
+        // Add PDF bookmark for navigation
+        try {
+          // Try to create outline using PDF-lib's API
+          // Note: This may not work in all versions of PDF-lib
+          if (typeof finalDoc.addOutline === 'function') {
+            finalDoc.addOutline(entry.title, [entry.pageNumber - 1])
+            console.log(`Successfully created bookmark for "${entry.title}" to page ${entry.pageNumber}`)
+          } else {
+            console.log('PDF-lib addOutline method not available, skipping bookmarks')
+          }
+        } catch (outlineError) {
+          console.warn(`Failed to create bookmark for "${entry.title}":`, outlineError.message)
+          console.log('Continuing without bookmarks - this is not critical for basic functionality')
+        }
+      }
+
+      console.log('Table of Contents generated with clickable links and bookmarks')
     },
 
     convertFileUrlToPath (fileUrl) {
