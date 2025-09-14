@@ -1326,17 +1326,16 @@ export default {
         }
       }
 
-      // Add 1 for the TOC page
-      console.log(`Total pages to merge: ${totalPages}`)
+      console.log(`Total content pages to merge: ${totalPages}`)
 
       const finalDoc = await PDFDocument.create()
 
-      // Generate Table of Contents page at the beginning before processing PDFs
-      await this.generateTableOfContents(mergeList, finalDoc)
-      console.log('Table of Contents page generated at the beginning')
+      // Generate Table of Contents (now supports multi-page)
+      const tocPageCount = await this.generateTableOfContents(mergeList, finalDoc)
+      console.log(`Generated ${tocPageCount} ToC pages`)
 
-      // Initialize page counter for content pages (ToC is page 1, content starts from page 1)
-      let globalPageCounter = 1
+      // Adjust global page counter to account for ToC pages
+      let globalPageCounter = 1 // Content pages always start from page 1
 
       // Template overlay functionality temporarily disabled to fix page numbering
       // TODO: Re-implement template overlays using the simple page copying approach
@@ -1364,7 +1363,7 @@ export default {
           if (resizeEnabled) {
             for (let i = 0; i < copiedPages.length; i++) {
               const page = copiedPages[i]
-              const pageNumber = globalPageCounter + i
+              const pageNumber = globalPageCounter + tocPageCount + i // Account for ToC pages in page numbering
               this.resizePageToA4(page, pageNumber)
             }
           }
@@ -1373,9 +1372,10 @@ export default {
           const templateDir = this.$store.state.preferences.templateDirectory
           if (templateDir && fs.existsSync(templateDir)) {
             console.log(`Template directory configured: ${templateDir}`)
-            // Calculate the absolute page number in the final document
-            const absoluteStartPage = globalPageCounter
-            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalPages)
+            // Calculate the absolute page number in the final document (ToC pages + current content page)
+            const absoluteStartPage = tocPageCount + (globalPageCounter - 1) // Current PDF starts at this absolute position
+            const totalDocumentPages = totalPages + tocPageCount // Total pages = content + ToC
+            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount)
           } else {
             console.log('No template directory configured, skipping template overlays')
           }
@@ -1393,11 +1393,11 @@ export default {
       const mergedBytes = await finalDoc.save()
       fs.writeFileSync(mergedPdfPath, mergedBytes)
 
-      console.log(`Merged PDF created: ${mergedPdfPath} (Total pages: ${totalPages})`)
+      console.log(`Merged PDF created: ${mergedPdfPath} (Total content pages: ${totalPages})`)
       return mergedPdfPath
     },
 
-    // Generate clickable Table of Contents page
+    // Generate clickable Table of Contents page (supports multi-page)
     async generateTableOfContents (mergeList, finalDoc) {
       const { PDFDocument } = require('pdf-lib')
 
@@ -1405,35 +1405,96 @@ export default {
       const A4_WIDTH = 595.28
       const A4_HEIGHT = 841.89
 
-      // Create ToC page at the beginning of the document
-      const tocPage = finalDoc.insertPage(0, [A4_WIDTH, A4_HEIGHT])
+      // Page layout constants
+      const TOP_MARGIN = 50
+      const BOTTOM_MARGIN = 50
+      const LINE_HEIGHT = 20
 
-      // Add title
-      tocPage.drawText('Table of Contents', {
-        x: 50,
-        y: A4_HEIGHT - 50,
-        size: 24,
-        font: await finalDoc.embedFont('Helvetica-Bold')
-      })
+      let currentPageIndex = 0
+      let currentY = A4_HEIGHT - TOP_MARGIN
+      let pageNumber = 1 // Content pages start from page 1 (ToC pages are 1, 2, 3... but not counted in content)
+      let tocPages = []
+      let tocEntries = []
 
-      let yPosition = A4_HEIGHT - 100
-      let pageNumber = 1 // Content pages start from page 1 (ToC is page 1 but not counted in content numbering)
-      const tocEntries = []
-
-      // First pass: collect all entries and their positions
+      // First pass: collect all entries and calculate layout
       for (const section of mergeList) {
         const level = (section.title.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
         const indent = level * 20
+
+        // Ensure we have at least one page before creating entries
+        if (tocPages.length === 0) {
+          let firstTocPage
+          try {
+            firstTocPage = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+            console.log('Created first ToC page for entries')
+          } catch (pageError) {
+            console.error('Failed to create first ToC page:', pageError.message)
+            throw new Error('Unable to create ToC page: ' + pageError.message)
+          }
+
+          if (!firstTocPage) {
+            throw new Error('First ToC page creation returned undefined')
+          }
+
+          tocPages.push(firstTocPage)
+
+          // Add title to first page
+          firstTocPage.drawText('Table of Contents', {
+            x: 50,
+            y: A4_HEIGHT - TOP_MARGIN,
+            size: 24,
+            font: await finalDoc.embedFont('Helvetica-Bold')
+          })
+          currentY = A4_HEIGHT - TOP_MARGIN - 40
+          currentPageIndex = 1
+        }
+
+        // Check if we need a new page for this entry
+        if (currentY - LINE_HEIGHT < BOTTOM_MARGIN) {
+          // Create new ToC page
+          let newTocPage
+          try {
+            newTocPage = finalDoc.insertPage(currentPageIndex, [A4_WIDTH, A4_HEIGHT])
+            console.log('Inserted ToC page at index ' + currentPageIndex)
+          } catch (pageError) {
+            console.error(`Failed to create ToC page at index ${currentPageIndex}:`, pageError.message)
+            // Fallback: try addPage
+            try {
+              newTocPage = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+              console.log('Fallback: added ToC page using addPage()')
+            } catch (fallbackError) {
+              console.error('Fallback page creation also failed:', fallbackError.message)
+              throw new Error(`Unable to create ToC page: ${fallbackError.message}`)
+            }
+          }
+
+          if (!newTocPage) {
+            throw new Error('Page creation returned undefined')
+          }
+
+          tocPages.push(newTocPage)
+
+          // Add "Table of Contents (Continued)" title for subsequent pages
+          newTocPage.drawText('Table of Contents (Continued)', {
+            x: 50,
+            y: A4_HEIGHT - TOP_MARGIN,
+            size: 18,
+            font: await finalDoc.embedFont('Helvetica-Bold')
+          })
+          currentY = A4_HEIGHT - TOP_MARGIN - 30
+          currentPageIndex++
+        }
 
         tocEntries.push({
           title: section.title,
           pageNumber: pageNumber,
           level: level,
           indent: indent,
-          yPosition: yPosition
+          tocPageIndex: tocPages.length - 1, // Use actual array length - 1
+          yPosition: currentY
         })
 
-        yPosition -= 20
+        currentY -= LINE_HEIGHT
 
         // Count pages in this section
         let sectionPageCount = 0
@@ -1447,25 +1508,37 @@ export default {
         pageNumber += sectionPageCount
       }
 
-      // Second pass: draw entries and create clickable links
+      // Second pass: draw entries on their respective pages
       for (const entry of tocEntries) {
-        // Draw section title
-        tocPage.drawText(entry.title, {
-          x: 50 + entry.indent,
-          y: entry.yPosition,
-          size: 12,
-          font: await finalDoc.embedFont('Helvetica')
-        })
+        const tocPage = tocPages[entry.tocPageIndex]
 
-        // Draw page number (right-aligned)
-        const pageNumText = entry.pageNumber.toString()
-        const pageNumWidth = pageNumText.length * 6 // Approximate width
-        tocPage.drawText(pageNumText, {
-          x: A4_WIDTH - 50 - pageNumWidth,
-          y: entry.yPosition,
-          size: 12,
-          font: await finalDoc.embedFont('Helvetica')
-        })
+        if (!tocPage) {
+          console.error('ToC page is undefined for entry:', entry)
+          continue
+        }
+
+        try {
+          // Draw section title
+          tocPage.drawText(entry.title, {
+            x: 50 + entry.indent,
+            y: entry.yPosition,
+            size: 12,
+            font: await finalDoc.embedFont('Helvetica')
+          })
+
+          // Draw page number (right-aligned)
+          const pageNumText = entry.pageNumber.toString()
+          const pageNumWidth = pageNumText.length * 6 // Approximate width
+          tocPage.drawText(pageNumText, {
+            x: A4_WIDTH - 50 - pageNumWidth,
+            y: entry.yPosition,
+            size: 12,
+            font: await finalDoc.embedFont('Helvetica')
+          })
+        } catch (drawError) {
+          console.error('Failed to draw ToC entry:', entry.title, drawError.message)
+          continue
+        }
 
         // Create clickable link rectangle over the title
         const titleWidth = entry.title.length * 6 // Approximate width
@@ -1478,7 +1551,8 @@ export default {
 
         // Try to create clickable link annotation
         try {
-          // Create link annotation using PDF-lib's low-level API
+          // Links point to content pages (ToC pages + content page number)
+          const targetPageNumber = tocPages.length + entry.pageNumber - 1
           const linkAnnotation = finalDoc.context.obj({
             Type: 'Annot',
             Subtype: 'Link',
@@ -1487,13 +1561,13 @@ export default {
             A: finalDoc.context.obj({
               Type: 'Action',
               S: 'GoTo',
-              D: [entry.pageNumber, 'XYZ', null, null, null]
+              D: [targetPageNumber, 'XYZ', null, null, null]
             })
           })
 
           // Add the annotation to the page
           tocPage.node.addAnnot(linkAnnotation)
-          console.log(`Successfully created clickable link for "${entry.title}" to page ${entry.pageNumber}`)
+          console.log(`Successfully created clickable link for "${entry.title}" to page ${targetPageNumber}`)
         } catch (linkError) {
           console.warn(`Failed to create clickable link for "${entry.title}":`, linkError.message)
           console.log('Continuing with text-only ToC entries')
@@ -1502,10 +1576,10 @@ export default {
         // Add PDF bookmark for navigation
         try {
           // Try to create outline using PDF-lib's API
-          // Note: This may not work in all versions of PDF-lib
           if (typeof finalDoc.addOutline === 'function') {
-            finalDoc.addOutline(entry.title, [entry.pageNumber])
-            console.log(`Successfully created bookmark for "${entry.title}" to page ${entry.pageNumber}`)
+            const targetPageNumber = tocPages.length + entry.pageNumber - 1
+            finalDoc.addOutline(entry.title, [targetPageNumber])
+            console.log(`Successfully created bookmark for "${entry.title}" to page ${targetPageNumber}`)
           } else {
             console.log('PDF-lib addOutline method not available, skipping bookmarks')
           }
@@ -1515,7 +1589,9 @@ export default {
         }
       }
 
-      console.log('Table of Contents generated with clickable links and bookmarks')
+      // All entries should now have valid page indices
+      console.log(`Generated ${tocPages.length} ToC pages with ${tocEntries.length} entries`)
+      return tocPages.length // Return number of ToC pages for page numbering adjustment
     },
 
     convertFileUrlToPath (fileUrl) {
@@ -1909,7 +1985,7 @@ export default {
     },
 
     // Apply template overlays to pages using docxtemplater
-    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages) {
+    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1) {
       const fs = require('fs')
       const path = require('path')
       const os = require('os')
@@ -1962,10 +2038,11 @@ export default {
           console.log(`Processing page ${pageNumber} (${isLandscape ? 'landscape' : 'portrait'})`)
 
           // Get page title from TOC
-          const pageTitle = await this.getPageTitleFromToc(mergeList, pageNumber)
+          const pageTitle = await this.getPageTitleFromToc(mergeList, pageNumber, tocPageCount)
 
           // Process template with docxtemplater
-          const processedDocxPath = await this.processDocxTemplate(templatePath, pageTitle, pageNumber, totalPages, tempDir)
+          const displayPageNumber = pageNumber - tocPageCount + 1 // Convert absolute position to display page number
+          const processedDocxPath = await this.processDocxTemplate(templatePath, pageTitle, displayPageNumber, totalPages - tocPageCount, tempDir)
 
           // Convert to PDF
           const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, execAsync)
@@ -1989,9 +2066,16 @@ export default {
       }
     },
 
-    // Get page title from TOC based on page number
-    async getPageTitleFromToc (mergeList, pageNumber) {
-      let currentPage = 1 // Content pages start from page 1 (ToC is page 1 but not counted in content numbering)
+    // Get page title from TOC based on page number (handles multi-page ToC)
+    async getPageTitleFromToc (mergeList, pageNumber, tocPageCount = 1) {
+      // Adjust page number to account for ToC pages
+      const adjustedPageNumber = pageNumber - tocPageCount
+
+      if (adjustedPageNumber < 0) {
+        return 'Table of Contents'
+      }
+
+      let currentPage = 0 // Content sections start from page 0
 
       for (const section of mergeList) {
         const sectionTitle = section.title || 'Untitled Section'
@@ -2007,7 +2091,7 @@ export default {
         }
 
         // Check if the target page is in this section
-        if (pageNumber >= currentPage && pageNumber < currentPage + sectionPageCount) {
+        if (adjustedPageNumber >= currentPage && adjustedPageNumber < currentPage + sectionPageCount) {
           return sectionTitle
         }
 
