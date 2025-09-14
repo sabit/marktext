@@ -69,5 +69,6 @@
   "watcherUsePolling": false,
   "conversionTools": [],
   "templateDirectory": "",
+  "resizePagesToA4": true,
   "cliScript": ""
 }

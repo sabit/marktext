@@ -142,8 +142,34 @@ class App {
       startUpAction,
       defaultDirectoryToOpen,
       autoSwitchTheme,
-      theme
+      theme,
+      conversionTools,
+      templateDirectory
     } = preferences.getAll()
+
+    // Check if Conversion Tools and Document Templates are configured
+    const conversionToolsConfigured = Array.isArray(conversionTools) && conversionTools.length > 0
+    const templateDirectoryConfigured = templateDirectory && templateDirectory.trim() !== ''
+
+    if (!conversionToolsConfigured || !templateDirectoryConfigured) {
+      const missingConfigs = []
+      if (!conversionToolsConfigured) {
+        missingConfigs.push('Conversion Tools')
+      }
+      if (!templateDirectoryConfigured) {
+        missingConfigs.push('Document Templates')
+      }
+
+      const message = `The following preferences are not configured:\n\n${missingConfigs.join('\n')}\n\nPlease go to Preferences to configure them.`
+
+      dialog.showMessageBox(null, {
+        type: 'warning',
+        title: 'Configuration Required',
+        message: 'Some preferences need to be configured',
+        detail: message,
+        buttons: ['OK']
+      })
+    }
 
     if (startUpAction === 'folder' && defaultDirectoryToOpen) {
       const info = normalizeMarkdownPath(defaultDirectoryToOpen)

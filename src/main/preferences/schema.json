@@ -448,9 +448,9 @@
     "type": "string",
     "default": ""
   },
-  "cliScript": {
-    "description": "General--Custom CLI script for external integrations.",
-    "type": "string",
-    "default": ""
+  "resizePagesToA4": {
+    "description": "Document Merge--Whether to automatically resize non-A4 pages to A4 format during document merging.",
+    "type": "boolean",
+    "default": true
   }
 }
