@@ -13,6 +13,7 @@
         :platform="platform"
         :is-saved="isSaved"
         :merge-in-progress="mergeInProgress"
+        :merge-progress="mergeProgress"
       ></title-bar>
       <div class="editor-placeholder" v-if="!init"></div>
       <recent
@@ -54,6 +55,7 @@ import { mapState } from 'vuex'
 import bus from '@/bus'
 import { DEFAULT_STYLE } from '@/config'
 import { ipcRenderer } from 'electron'
+import { getCurrentWindow } from '@electron/remote'
 
 export default {
   name: 'marktext',
@@ -72,7 +74,8 @@ export default {
   mixins: [loadingPageMixins],
   data () {
     return {
-      mergeInProgress: false
+      mergeInProgress: false,
+      mergeProgress: 0
     }
   },
   computed: {
@@ -170,6 +173,7 @@ export default {
     // Listen for merge progress events
     bus.$on('merge-started', this.onMergeStarted)
     bus.$on('merge-completed', this.onMergeCompleted)
+    bus.$on('merge-progress', this.onMergeProgress)
 
     // prevent Chromium's default behavior and try to open the first file
     window.addEventListener('dragover', e => {
@@ -207,13 +211,39 @@ export default {
     // Clean up event listeners
     bus.$off('merge-started', this.onMergeStarted)
     bus.$off('merge-completed', this.onMergeCompleted)
+    bus.$off('merge-progress', this.onMergeProgress)
   },
   methods: {
     onMergeStarted () {
       this.mergeInProgress = true
+      this.mergeProgress = 0
     },
     onMergeCompleted () {
       this.mergeInProgress = false
+      this.mergeProgress = 0
+
+      // Flash the taskbar to notify user of completion
+      try {
+        const win = getCurrentWindow()
+        // Start flashing the taskbar button
+        win.flashFrame(true)
+
+        // Stop flashing after 3 seconds
+        setTimeout(() => {
+          win.flashFrame(false)
+        }, 3000)
+      } catch (error) {
+        console.warn('Failed to flash taskbar:', error)
+      }
+    },
+    onMergeProgress (progressData) {
+      // Handle both old format (number) and new format (object with progress and message)
+      if (typeof progressData === 'object' && progressData.progress !== undefined) {
+        this.mergeProgress = Math.max(0, Math.min(1, progressData.progress / 100))
+      } else {
+        // Fallback for old format
+        this.mergeProgress = Math.max(0, Math.min(1, progressData))
+      }
     }
   }
 }

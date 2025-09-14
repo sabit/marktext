@@ -1070,6 +1070,9 @@ export default {
         // Debug output as per requirements
         console.log('Parsed sections:', sections)
 
+        // Emit progress update after parsing
+        bus.$emit('merge-progress', { progress: 10, message: 'Document sections parsed' })
+
         // Convert and merge documents
         const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
 
@@ -1235,9 +1238,15 @@ export default {
 
       // Process each section
       const mergeList = []
+      const totalSections = sections.length
 
-      for (const section of sections) {
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i]
         const sectionPdfs = []
+
+        // Emit progress update for section processing
+        const sectionProgress = 10 + (i / totalSections) * 30 // 10% to 40% range
+        bus.$emit('merge-progress', { progress: sectionProgress, message: `Processing section ${i + 1}/${totalSections}: ${section.title}` })
 
         for (const docPath of section.docs) {
           // Convert file:// URL to file system path
@@ -1295,6 +1304,9 @@ export default {
       // Debug output as per requirements
       console.log('Merge list:', mergeList)
 
+      // Emit progress update before merging
+      bus.$emit('merge-progress', { progress: 60, message: 'Merging documents' })
+
       // Get template directory from preferences
       const templateDirectory = this.$store.state.preferences.templateDirectory || ''
 
@@ -1334,6 +1346,9 @@ export default {
       const tocPageCount = await this.generateTableOfContents(mergeList, finalDoc)
       console.log(`Generated ${tocPageCount} ToC pages`)
 
+      // Emit progress update after ToC generation
+      bus.$emit('merge-progress', { progress: 70, message: 'Table of Contents generated' })
+
       // Adjust global page counter to account for ToC pages
       let globalPageCounter = 1 // Content pages always start from page 1
 
@@ -1342,6 +1357,10 @@ export default {
 
       for (const section of mergeList) {
         console.log(`Processing section: ${section.title}`)
+
+        // Emit progress update before processing each section
+        const sectionStartProgress = 70 + (mergeList.indexOf(section) / mergeList.length) * 20 // 70% to 90% range
+        bus.$emit('merge-progress', { progress: sectionStartProgress, message: `Processing section: ${section.title}` })
 
         for (const pdfPath of section.pdfs) {
           if (!fs.existsSync(pdfPath)) {
@@ -1388,12 +1407,34 @@ export default {
 
           globalPageCounter += sourcePages.length
         }
+
+        // Emit progress update after each section with more detailed info
+        const sectionCompleteProgress = 70 + ((mergeList.indexOf(section) + 1) / mergeList.length) * 20 // 70% to 90% range
+
+        // Calculate section page count asynchronously
+        let sectionPageCount = 0
+        for (const pdfPath of section.pdfs) {
+          if (fs.existsSync(pdfPath)) {
+            const contentBytes = fs.readFileSync(pdfPath)
+            const doc = await PDFDocument.load(contentBytes)
+            sectionPageCount += doc.getPageCount()
+          }
+        }
+
+        bus.$emit('merge-progress', { progress: sectionCompleteProgress, message: `✓ Completed section: ${section.title} (${sectionPageCount} pages)` })
       }
 
       const mergedBytes = await finalDoc.save()
       fs.writeFileSync(mergedPdfPath, mergedBytes)
 
       console.log(`Merged PDF created: ${mergedPdfPath} (Total content pages: ${totalPages})`)
+
+      // Emit progress update after saving
+      bus.$emit('merge-progress', { progress: 95, message: 'Finalizing merged document...' })
+
+      // Emit progress update after merge completion
+      bus.$emit('merge-progress', { progress: 100, message: '✅ Merge completed successfully!' })
+
       return mergedPdfPath
     },
 

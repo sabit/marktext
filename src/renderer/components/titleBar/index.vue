@@ -68,11 +68,17 @@
         <el-tooltip
           v-if="mergeInProgress"
           class="item"
-          content="Merging documents..."
+          :content="mergeProgressText"
           placement="bottom-end"
         >
           <div class="merge-indicator">
             <div class="merge-spinner"></div>
+            <div class="merge-progress-container">
+              <div
+                class="merge-progress-bar"
+                :style="{ width: mergeProgressPercent }"
+              ></div>
+            </div>
           </div>
         </el-tooltip>
       </div>
@@ -164,6 +170,10 @@ export default {
     mergeInProgress: {
       type: Boolean,
       default: false
+    },
+    mergeProgress: {
+      type: Number,
+      default: 0
     }
   },
   computed: {
@@ -178,6 +188,14 @@ export default {
     },
     showCustomTitleBar () {
       return this.titleBarStyle === 'custom' && !this.isOsx
+    },
+    mergeProgressText () {
+      if (!this.mergeInProgress) return ''
+      const percent = Math.round(this.mergeProgress * 100)
+      return `Merging documents... ${percent}%`
+    },
+    mergeProgressPercent () {
+      return `${Math.round(this.mergeProgress * 100)}%`
     }
   },
   watch: {
@@ -192,6 +210,20 @@ export default {
       }
 
       document.title = title
+    },
+    mergeInProgress: function (newVal) {
+      if (newVal) {
+        // Start progress bar
+        this.updateProgressBar(this.mergeProgress)
+      } else {
+        // Clear progress bar
+        this.updateProgressBar(-1)
+      }
+    },
+    mergeProgress: function (newVal) {
+      if (this.mergeInProgress) {
+        this.updateProgressBar(newVal)
+      }
     }
   },
   methods: {
@@ -202,6 +234,21 @@ export default {
       index += 1
       if (index >= len) index = 0
       this.show = ITEMS[index]
+    },
+
+    updateProgressBar (progress) {
+      try {
+        const win = getCurrentWindow()
+        if (progress >= 0 && progress <= 1) {
+          // Set progress (0-1 for determinate progress)
+          win.setProgressBar(progress)
+        } else if (progress === -1) {
+          // Clear progress bar
+          win.setProgressBar(-1)
+        }
+      } catch (error) {
+        console.warn('Failed to update progress bar:', error)
+      }
     },
 
     handleCloseClick () {
@@ -428,6 +475,7 @@ export default {
     width: 24px;
     height: 24px;
     margin-left: 5px;
+    position: relative;
   }
 
   .merge-spinner {
@@ -437,6 +485,24 @@ export default {
     border-top: 2px solid var(--themeColor);
     border-radius: 50%;
     animation: spin 1s linear infinite;
+  }
+
+  .merge-progress-container {
+    position: absolute;
+    bottom: -6px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--editorColor20);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .merge-progress-bar {
+    height: 100%;
+    background: var(--themeColor);
+    border-radius: 2px;
+    transition: width 0.3s ease;
   }
 
   @keyframes spin {
