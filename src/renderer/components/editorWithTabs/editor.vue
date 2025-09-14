@@ -1111,42 +1111,53 @@ export default {
       const sections = []
       let currentSection = null
       let inOrderedList = false
-      let nestingStack = [] // Track nesting levels and counters
+      let levelCounters = [0] // Counters for each nesting level
 
       for (let i = 0; i < lines.length; i++) {
         const originalLine = lines[i]
-        const line = originalLine.trim()
+        const trimmedLine = originalLine.trim()
 
-        console.log(`Processing line ${i + 1}: "${originalLine}" (trimmed: "${line}")`)
+        console.log(`Processing line ${i + 1}: "${originalLine}" (trimmed: "${trimmedLine}")`)
 
-        // Check for ordered list items with nesting support
-        const orderedListMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/)
-        if (orderedListMatch) {
+        // Check for ordered list items with nesting support - use original line to preserve indentation
+        const orderedListMatch = originalLine.match(/^(\s*)(.+)$/)
+        if (orderedListMatch && trimmedLine.match(/^\d+(?:\.\d+)*\.\s+.+/)) {
           console.log(`Found ordered list item: ${orderedListMatch[0]}`)
-          const [, indent, number, content] = orderedListMatch
+          const [, indent, content] = orderedListMatch
           inOrderedList = true
 
-          // Calculate nesting level based on indentation
-          const nestingLevel = Math.floor(indent.length / 4) // Assume 4 spaces per level
-          console.log(`Nesting level: ${nestingLevel}, indent length: ${indent.length}`)
+          // Calculate nesting level based on indentation (3 spaces per level for MarkText)
+          const indentLength = indent.length
+          let nestingLevel = 0
 
-          // Update nesting stack
-          while (nestingStack.length > nestingLevel) {
-            nestingStack.pop()
+          if (indentLength >= 3) {
+            nestingLevel = Math.floor(indentLength / 3)
           }
-          if (nestingStack.length <= nestingLevel) {
-            while (nestingStack.length <= nestingLevel) {
-              nestingStack.push(0)
-            }
+
+          console.log(`Nesting level: ${nestingLevel}, indent length: ${indentLength}`)
+
+          // Ensure we have counters for all levels up to the current nesting level
+          while (levelCounters.length <= nestingLevel) {
+            levelCounters.push(0)
           }
-          nestingStack[nestingLevel] = parseInt(number)
 
-          // Generate nested numbering (1.1, 1.2, 2.1, etc.)
-          const nestedNumber = nestingStack.slice(0, nestingLevel + 1).join('.')
-          console.log(`Generated nested number: ${nestedNumber}`)
+          // Increment the counter for this level
+          levelCounters[nestingLevel]++
 
-          // Extract text content without file links
+          // Reset counters for deeper levels
+          for (let j = nestingLevel + 1; j < levelCounters.length; j++) {
+            levelCounters[j] = 0
+          }
+
+          // Generate hierarchical numbering from counters
+          const nestedNumber = levelCounters.slice(0, nestingLevel + 1).join('.')
+          console.log(`Generated nested number: ${nestedNumber} (counters: ${levelCounters.join(',')})`)
+
+          // Extract text content without the original numbering
           let cleanContent = content
+
+          // Remove the original numbering from the content (e.g., "1.1 Background" -> "Background")
+          cleanContent = cleanContent.replace(/^\d+(?:\.\d+)*\.\s+/, '').trim()
 
           // Remove file links from content
           cleanContent = cleanContent.replace(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/g, '').trim()
@@ -1187,15 +1198,15 @@ export default {
         } else {
           // Only check for file links outside ordered lists if we're not in an ordered list
           // and the line is not empty and not a heading
-          if (!inOrderedList && line.trim() !== '' && !line.startsWith('#')) {
-            const fileLinkMatch = line.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
+          if (!inOrderedList && trimmedLine !== '' && !trimmedLine.startsWith('#')) {
+            const fileLinkMatch = trimmedLine.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
             if (fileLinkMatch) {
-              throw new Error(`File links must be inside ordered list items. Found link outside ordered list: "${line}"`)
+              throw new Error(`File links must be inside ordered list items. Found link outside ordered list: "${trimmedLine}"`)
             }
           }
 
           // Check for end of ordered list (empty line)
-          if (line.trim() === '' && inOrderedList) {
+          if (trimmedLine === '' && inOrderedList) {
             inOrderedList = false
           }
         }
