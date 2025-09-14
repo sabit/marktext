@@ -1333,47 +1333,8 @@ export default {
       // Initialize page counter for content pages (ToC will be page 1)
       let globalPageCounter = 1
 
-      // Load header/footer templates if available (moved here after finalDoc creation)
-      let templatePortraitPath = null
-      let templateLandscapePath = null
-
-      if (templateDirectory && fs.existsSync(templateDirectory)) {
-        console.log('Template directory exists:', templateDirectory)
-
-        // List all files in template directory for debugging
-        try {
-          const templateFiles = fs.readdirSync(templateDirectory)
-          console.log('Files in template directory:', templateFiles)
-        } catch (listError) {
-          console.warn('Could not list template directory files:', listError.message)
-        }
-
-        const portraitTemplatePath = path.join(templateDirectory, 'header_footer_portrait.docx')
-        const landscapeTemplatePath = path.join(templateDirectory, 'header_footer_landscape.docx')
-
-        console.log('Portrait template path:', portraitTemplatePath)
-        console.log('Landscape template path:', landscapeTemplatePath)
-
-        if (fs.existsSync(portraitTemplatePath)) {
-          console.log('Portrait DOCX template found:', portraitTemplatePath)
-          const portraitStats = fs.statSync(portraitTemplatePath)
-          console.log(`Portrait template size: ${portraitStats.size} bytes`)
-          templatePortraitPath = portraitTemplatePath
-        } else {
-          console.log('Portrait template not found:', portraitTemplatePath)
-        }
-
-        if (fs.existsSync(landscapeTemplatePath)) {
-          console.log('Landscape DOCX template found:', landscapeTemplatePath)
-          const landscapeStats = fs.statSync(landscapeTemplatePath)
-          console.log(`Landscape template size: ${landscapeStats.size} bytes`)
-          templateLandscapePath = landscapeTemplatePath
-        } else {
-          console.log('Landscape template not found:', landscapeTemplatePath)
-        }
-      } else {
-        console.log('No template directory specified or directory does not exist')
-      }
+      // Template overlay functionality temporarily disabled to fix page numbering
+      // TODO: Re-implement template overlays using the simple page copying approach
 
       for (const section of mergeList) {
         console.log(`Processing section: ${section.title}`)
@@ -1388,171 +1349,28 @@ export default {
           const contentBytes = fs.readFileSync(pdfPath)
           const contentDoc = await PDFDocument.load(contentBytes)
 
-          // Process each page: resize content and overlay on A4 page
+          // Simple approach: copy all pages at once and apply overlays
           const sourcePages = contentDoc.getPages()
-          for (let i = 0; i < sourcePages.length; i++) {
-            const sourcePage = sourcePages[i]
-            const pageNumber = globalPageCounter + i
+          const copiedPages = await finalDoc.copyPages(contentDoc, sourcePages.map((_, i) => i))
+          console.log(`Copied ${copiedPages.length} pages from ${pdfPath}`)
 
-            // Resize the source page content to fit within A4
-            this.resizePageToA4(sourcePage, pageNumber)
-
-            // Create A4 page with resized content overlaid
-            const a4Page = await this.createA4PageWithContent(sourcePage, pageNumber, finalDoc)
-            console.log(`Created A4 page ${pageNumber} with overlaid content`)
-
-            // Verify the A4 page was created correctly
-            if (a4Page) {
-              const { width: a4Width, height: a4Height } = a4Page.getSize()
-              console.log(`A4 page ${pageNumber} final size: ${a4Width}x${a4Height} points`)
-            } else {
-              console.error(`Failed to create A4 page ${pageNumber}`)
+          // Apply resizing if enabled
+          const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false
+          if (resizeEnabled) {
+            for (let i = 0; i < copiedPages.length; i++) {
+              const page = copiedPages[i]
+              const pageNumber = globalPageCounter + i
+              this.resizePageToA4(page, pageNumber)
             }
-
-            // Apply template overlay to the A4 page if available
-            if (templatePortraitPath || templateLandscapePath) {
-              const { width, height } = a4Page.getSize()
-              const orientation = width > height ? 'landscape' : 'portrait'
-
-              // Select appropriate template
-              const templatePath = orientation === 'portrait' ? templatePortraitPath : templateLandscapePath
-
-              console.log(`Page ${pageNumber} orientation: ${orientation}`)
-              console.log('Template path:', templatePath)
-
-              if (templatePath) {
-                try {
-                  // Patch the DOCX template with current page data
-                  const patchedDocxPath = await this.patchDocxTemplate(
-                    templatePath,
-                    section.title,
-                    pageNumber,
-                    totalPages
-                  )
-
-                  // Convert patched DOCX to PDF
-                  const { exec } = require('child_process')
-                  const { promisify } = require('util')
-                  const execAsync = promisify(exec)
-
-                  const conversionTools = this.$store.state.preferences.conversionTools || []
-                  const docxTool = this.findConversionTool(patchedDocxPath, conversionTools)
-
-                  if (!docxTool) {
-                    console.warn(`No conversion tool found for DOCX file: ${patchedDocxPath}`)
-                  } else {
-                    const tempDir = require('os').tmpdir()
-                    const pdfOutputPath = await this.convertToPdf(patchedDocxPath, docxTool, tempDir, execAsync)
-
-                    // Load the converted PDF and apply as overlay
-                    if (fs.existsSync(pdfOutputPath)) {
-                      const overlayBytes = fs.readFileSync(pdfOutputPath)
-                      console.log('Overlay PDF loaded, size: ' + overlayBytes.length + ' bytes')
-
-                      try {
-                        const overlayDoc = await PDFDocument.load(overlayBytes)
-
-                        // Check if overlay document has pages
-                        const overlayPageCount = overlayDoc.getPageCount()
-                        console.log(`Overlay PDF has ${overlayPageCount} pages`)
-
-                        if (overlayPageCount > 0) {
-                          try {
-                            const copiedPages = await finalDoc.copyPages(overlayDoc, [0])
-                            console.log('Copied pages result:', copiedPages)
-                            console.log('Copied pages length:', copiedPages?.length)
-                            console.log('First page type:', copiedPages?.[0]?.constructor?.name)
-                            console.log('First page object:', copiedPages?.[0])
-
-                            // Try using embedPage on the overlay page directly
-                            console.log('Trying embedPage approach...')
-                            try {
-                              const overlayPageFromDoc = overlayDoc.getPages()[0]
-                              console.log('Overlay page from doc:', overlayPageFromDoc)
-                              console.log('Overlay page from doc type:', overlayPageFromDoc?.constructor?.name)
-
-                              const embeddedPage = await finalDoc.embedPage(overlayPageFromDoc)
-                              console.log('Embedded page result:', embeddedPage)
-                              console.log('Embedded page type:', embeddedPage?.constructor?.name)
-
-                              // Use the embedded page instead
-                              copiedPages[0] = embeddedPage
-                              console.log('Replaced copied page with properly embedded page')
-                            } catch (embedError) {
-                              console.warn('embedPage failed, continuing with copyPages result:', embedError.message)
-                            }
-
-                            if (copiedPages && copiedPages.length > 0 && copiedPages[0] != null) {
-                              const overlayPage = copiedPages[0]
-
-                              // Verify the overlay page is valid and not null/undefined
-                              if (overlayPage && typeof overlayPage === 'object' &&
-                                  overlayPage != null &&
-                                  (overlayPage.constructor.name === 'PDFEmbeddedPage' || overlayPage.constructor.name === 'PDFPage')) {
-                                // Draw overlay on top of the A4 page
-                                console.log(`About to draw overlay page ${pageNumber}, overlayPage type: ${overlayPage.constructor.name}`)
-                                console.log('Overlay page before drawPage:', overlayPage)
-                                console.log(`Overlay page is NaN check: ${isNaN(overlayPage)}`)
-                                console.log(`Overlay page == null check: ${overlayPage == null}`)
-                                try {
-                                  a4Page.drawPage(overlayPage)
-                                  console.log(`Successfully applied DOCX template overlay to page ${pageNumber}`)
-                                } catch (drawError) {
-                                  console.error(`Error drawing overlay page for page ${pageNumber}:`, drawError.message)
-                                  console.error('Draw error details:', drawError)
-                                  console.error('Overlay page object:', overlayPage)
-                                  console.error('Overlay page constructor:', overlayPage?.constructor?.name)
-                                  console.error('A4 page object being drawn on:', a4Page)
-                                  console.error('A4 page constructor:', a4Page?.constructor?.name)
-                                  // Don't rethrow - continue with next page
-                                }
-                              } else {
-                                console.warn(`Invalid overlay page object for page ${pageNumber}, type: ${typeof overlayPage}, constructor: ${overlayPage?.constructor?.name}, isNull: ${overlayPage == null}`)
-                              }
-                            } else {
-                              console.warn(`copyPages returned empty array or null for page ${pageNumber}`)
-                            }
-                          } catch (copyError) {
-                            console.error(`Error copying overlay page for page ${pageNumber}:`, copyError.message)
-                            console.error('Copy error details:', copyError)
-                          }
-                        } else {
-                          console.warn(`Overlay PDF has no pages, skipping overlay for page ${pageNumber}`)
-                        }
-                      } catch (loadError) {
-                        console.error(`Error loading overlay PDF for page ${pageNumber}:`, loadError.message)
-                        console.error('Load error details:', loadError)
-                      }
-
-                      // Clean up temporary files immediately after use
-                      try {
-                        if (fs.existsSync(patchedDocxPath)) {
-                          fs.unlinkSync(patchedDocxPath)
-                        }
-                        if (fs.existsSync(pdfOutputPath)) {
-                          fs.unlinkSync(pdfOutputPath)
-                        }
-                        console.log('Temporary files cleaned up')
-                      } catch (cleanupError) {
-                        console.warn('Could not clean up temporary files:', cleanupError.message)
-                      }
-                    } else {
-                      console.warn(`Converted PDF not found: ${pdfOutputPath}`)
-                    }
-                  }
-                } catch (overlayError) {
-                  console.error(`Error applying template overlay to page ${pageNumber}:`, overlayError.message)
-                }
-              } else {
-                console.log(`Skipping template overlay for page ${pageNumber} - template not available for ${orientation}`)
-                console.log(`Available templates - Portrait: ${!!templatePortraitPath}, Landscape: ${!!templateLandscapePath}`)
-              }
-            } else {
-              console.log(`No template available for page ${pageNumber}`)
-            }
-
-            globalPageCounter++
           }
+
+          // Add the copied pages to the final document
+          for (const page of copiedPages) {
+            finalDoc.addPage(page)
+          }
+          console.log(`Added ${copiedPages.length} pages to final document`)
+
+          globalPageCounter += sourcePages.length
         }
       }
 
@@ -1587,7 +1405,7 @@ export default {
       })
 
       let yPosition = A4_HEIGHT - 100
-      let pageNumber = 2 // ToC entries start from page 2
+      let pageNumber = 1 // Content pages start from page 1 (ToC is page 0)
       const tocEntries = []
 
       // First pass: collect all entries and their positions
@@ -1657,7 +1475,7 @@ export default {
             A: finalDoc.context.obj({
               Type: 'Action',
               S: 'GoTo',
-              D: [entry.pageNumber - 1, 'XYZ', null, null, null]
+              D: [entry.pageNumber, 'XYZ', null, null, null]
             })
           })
 
@@ -1674,7 +1492,7 @@ export default {
           // Try to create outline using PDF-lib's API
           // Note: This may not work in all versions of PDF-lib
           if (typeof finalDoc.addOutline === 'function') {
-            finalDoc.addOutline(entry.title, [entry.pageNumber - 1])
+            finalDoc.addOutline(entry.title, [entry.pageNumber])
             console.log(`Successfully created bookmark for "${entry.title}" to page ${entry.pageNumber}`)
           } else {
             console.log('PDF-lib addOutline method not available, skipping bookmarks')
