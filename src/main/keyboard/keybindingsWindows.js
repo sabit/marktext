@@ -23,6 +23,7 @@ export default new Map([
   ['file.close-tab', 'Ctrl+W'],
   ['file.close-window', 'Ctrl+Shift+W'],
   ['file.quit', 'Ctrl+Q'],
+  ['file.merge-documents', 'Ctrl+/'],
 
   // Edit menu
   ['edit.undo', 'Ctrl+Z'],
