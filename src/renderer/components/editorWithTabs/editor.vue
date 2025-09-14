@@ -1326,11 +1326,16 @@ export default {
         }
       }
 
+      // Add 1 for the TOC page
       console.log(`Total pages to merge: ${totalPages}`)
 
       const finalDoc = await PDFDocument.create()
 
-      // Initialize page counter for content pages (ToC will be page 1)
+      // Generate Table of Contents page at the beginning before processing PDFs
+      await this.generateTableOfContents(mergeList, finalDoc)
+      console.log('Table of Contents page generated at the beginning')
+
+      // Initialize page counter for content pages (ToC is page 1, content starts from page 1)
       let globalPageCounter = 1
 
       // Template overlay functionality temporarily disabled to fix page numbering
@@ -1364,6 +1369,17 @@ export default {
             }
           }
 
+          // Apply template overlays if configured
+          const templateDir = this.$store.state.preferences.templateDirectory
+          if (templateDir && fs.existsSync(templateDir)) {
+            console.log(`Template directory configured: ${templateDir}`)
+            // Calculate the absolute page number in the final document
+            const absoluteStartPage = globalPageCounter
+            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalPages)
+          } else {
+            console.log('No template directory configured, skipping template overlays')
+          }
+
           // Add the copied pages to the final document
           for (const page of copiedPages) {
             finalDoc.addPage(page)
@@ -1373,10 +1389,6 @@ export default {
           globalPageCounter += sourcePages.length
         }
       }
-
-      // Generate Table of Contents page at the very end after all pages are added
-      await this.generateTableOfContents(mergeList, finalDoc)
-      console.log('Table of Contents page generated')
 
       const mergedBytes = await finalDoc.save()
       fs.writeFileSync(mergedPdfPath, mergedBytes)
@@ -1405,7 +1417,7 @@ export default {
       })
 
       let yPosition = A4_HEIGHT - 100
-      let pageNumber = 1 // Content pages start from page 1 (ToC is page 0)
+      let pageNumber = 1 // Content pages start from page 1 (ToC is page 1 but not counted in content numbering)
       const tocEntries = []
 
       // First pass: collect all entries and their positions
@@ -1896,95 +1908,287 @@ export default {
       }
     },
 
-    // DOCX template patching using docxtemplater
-    async patchDocxTemplate (templatePath, sectionTitle, pageNumber, totalPages) {
+    // Apply template overlays to pages using docxtemplater
+    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages) {
+      const fs = require('fs')
+      const path = require('path')
+      const os = require('os')
+      const { exec } = require('child_process')
+      const util = require('util')
+      const execAsync = util.promisify(exec)
+
+      try {
+        const templateDir = this.$store.state.preferences.templateDirectory
+        console.log(`Applying template overlays from directory: ${templateDir}`)
+
+        // Look for portrait and landscape templates
+        const portraitTemplatePath = path.join(templateDir, 'portrait.docx')
+        const landscapeTemplatePath = path.join(templateDir, 'landscape.docx')
+
+        if (!fs.existsSync(portraitTemplatePath) && !fs.existsSync(landscapeTemplatePath)) {
+          console.log('No portrait.docx or landscape.docx templates found, skipping template overlays')
+          return
+        }
+
+        // Check if conversion tools are configured
+        const tools = this.$store.state.preferences.conversionTools || []
+        if (tools.length === 0) {
+          console.warn('No conversion tools configured. Template overlays require LibreOffice or another DOCX to PDF converter.')
+          console.warn('Please configure conversion tools in MarkText preferences to use template overlays.')
+          return
+        }
+
+        // Create temporary directory for processed templates
+        const tempDir = path.join(os.tmpdir(), 'marktext-templates')
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true })
+        }
+
+        // Process each page
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i]
+          const pageNumber = startPageNumber + i // Page numbering starts from startPageNumber
+          const pageSize = page.getSize()
+
+          // Determine if page is portrait or landscape
+          const isLandscape = pageSize.width > pageSize.height
+          const templatePath = isLandscape ? landscapeTemplatePath : portraitTemplatePath
+
+          if (!fs.existsSync(templatePath)) {
+            console.log(`No template for ${isLandscape ? 'landscape' : 'portrait'} orientation, skipping page ${pageNumber}`)
+            continue
+          }
+
+          console.log(`Processing page ${pageNumber} (${isLandscape ? 'landscape' : 'portrait'})`)
+
+          // Get page title from TOC
+          const pageTitle = await this.getPageTitleFromToc(mergeList, pageNumber)
+
+          // Process template with docxtemplater
+          const processedDocxPath = await this.processDocxTemplate(templatePath, pageTitle, pageNumber, totalPages, tempDir)
+
+          // Convert to PDF
+          const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, execAsync)
+
+          // Apply as overlay
+          await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber)
+
+          // Clean up temporary files
+          try {
+            fs.unlinkSync(processedDocxPath)
+            fs.unlinkSync(processedPdfPath)
+          } catch (cleanupError) {
+            console.warn('Failed to clean up temporary files:', cleanupError.message)
+          }
+        }
+
+        console.log('Successfully applied template overlays to all pages')
+      } catch (error) {
+        console.error('Error applying template overlays:', error.message)
+        console.log('Continuing without template overlays')
+      }
+    },
+
+    // Get page title from TOC based on page number
+    async getPageTitleFromToc (mergeList, pageNumber) {
+      let currentPage = 1 // Content pages start from page 1 (ToC is page 1 but not counted in content numbering)
+
+      for (const section of mergeList) {
+        const sectionTitle = section.title || 'Untitled Section'
+
+        // Count pages in this section
+        let sectionPageCount = 0
+        for (const pdfPath of section.pdfs) {
+          if (require('fs').existsSync(pdfPath)) {
+            const contentBytes = require('fs').readFileSync(pdfPath)
+            const doc = await require('pdf-lib').PDFDocument.load(contentBytes)
+            sectionPageCount += doc.getPageCount()
+          }
+        }
+
+        // Check if the target page is in this section
+        if (pageNumber >= currentPage && pageNumber < currentPage + sectionPageCount) {
+          return sectionTitle
+        }
+
+        currentPage += sectionPageCount
+      }
+
+      return 'Document'
+    },
+
+    // Process DOCX template with docxtemplater
+    async processDocxTemplate (templatePath, pageTitle, pageNumber, totalPages, tempDir) {
       const fs = require('fs')
       const path = require('path')
       const PizZip = require('pizzip')
       const Docxtemplater = require('docxtemplater')
 
       try {
-        console.log('Processing template for page: ' + pageNumber + '/' + totalPages)
-
-        // Read the template file
-        console.log(`Reading original template file: ${templatePath}`)
-
-        if (!fs.existsSync(templatePath)) {
-          throw new Error(`Template file does not exist: ${templatePath}`)
-        }
-
+        // Read template
         const content = fs.readFileSync(templatePath)
-        console.log(`Content loaded into memory, size: ${content.length} bytes`)
-
-        // Validate that we have content
-        if (!content || content.length === 0) {
-          throw new Error(`Template file is empty: ${templatePath}`)
-        }
-
-        console.log('File loaded successfully')
-
-        // Create a copy of the content to ensure we don't modify the original
-        const contentCopy = Buffer.from(content)
-        console.log('Created content copy for processing')
-
-        let zip
-        try {
-          zip = new PizZip(contentCopy)
-          console.log('Successfully created PizZip object')
-        } catch (zipError) {
-          console.error('Failed to create PizZip object:', zipError)
-          console.error('Content length:', content.length)
-          console.error('Content starts with:', content.subarray(0, 10).toString('hex'))
-          console.error('Content ends with:', content.subarray(Math.max(0, content.length - 10)).toString('hex'))
-
-          // Try to provide more specific error information
-          if (zipError.message.includes('central dir')) {
-            console.error('This appears to be a corrupted ZIP file with issues in the central directory')
-            console.error('The file may be:')
-            console.error('- A corrupted DOCX file')
-            console.error('- Not a valid DOCX file')
-            console.error('- A file that was partially downloaded or saved incorrectly')
-          }
-
-          throw new Error(`Failed to parse DOCX file as ZIP archive: ${zipError.message}`)
-        }
-
-        // Create docxtemplater instance with minimal configuration to preserve styling
+        const zip = new PizZip(content)
         const doc = new Docxtemplater(zip)
 
-        // Set template variables
+        // Set template variables (use single braces in DOCX: {{page_title}}, {{page_number}}, {{page_total}})
         doc.setData({
-          section_title: sectionTitle || '',
-          page_number: pageNumber || '',
-          total_pages: totalPages || '',
-          page_number_total: `${pageNumber || ''} of ${totalPages || ''}`
+          page_title: pageTitle,
+          page_number: pageNumber,
+          page_total: totalPages
         })
 
-        // Render the document
-        console.log('Rendering document with docxtemplater...')
+        // Render document
         doc.render()
-        console.log('Document rendered successfully')
 
-        // Generate the patched document
-        console.log('Generating patched document...')
-        const patchedContent = doc.getZip().generate({
+        // Generate processed document
+        const processedContent = doc.getZip().generate({
           type: 'nodebuffer',
           compression: 'DEFLATE'
         })
 
-        // Create temporary file path and write immediately for conversion
-        const tempDir = require('os').tmpdir()
-        const templateName = path.basename(templatePath, '.docx')
-        const patchedPath = path.join(tempDir, `${templateName}_patched_${pageNumber}.docx`)
+        // Save to temporary file
+        const outputPath = path.join(tempDir, `template_${pageNumber}_${Date.now()}.docx`)
+        fs.writeFileSync(outputPath, processedContent)
 
-        // Write and use immediately, then clean up
-        fs.writeFileSync(patchedPath, patchedContent)
-
-        console.log('Using temporary DOCX for conversion')
-        return patchedPath
+        return outputPath
       } catch (error) {
-        console.error('Error patching DOCX template:', error)
-        throw new Error(`Failed to patch DOCX template: ${error.message}`)
+        console.error('Error processing DOCX template:', error.message)
+        throw error
+      }
+    },
+
+    // Convert DOCX to PDF using LibreOffice
+    async convertDocxToPdf (docxPath, execAsync) {
+      const fs = require('fs')
+      const path = require('path')
+
+      try {
+        // Find conversion tool
+        const tools = this.$store.state.preferences.conversionTools || []
+        const conversionTool = this.findConversionTool(docxPath, tools)
+
+        if (!conversionTool) {
+          const errorMsg = 'No suitable conversion tool found for DOCX to PDF conversion. ' +
+            'Please configure LibreOffice or another DOCX to PDF conversion tool in MarkText preferences.'
+          console.error(errorMsg)
+          console.error('Available conversion tools:', tools.map(t => `${t.name} (${t.extensions.join(', ')})`).join(', '))
+          console.error('Looking for tool that handles .docx files')
+          throw new Error(errorMsg)
+        }
+
+        console.log(`Using conversion tool: ${conversionTool.name}`)
+        console.log(`Tool path: ${conversionTool.path}`)
+        console.log(`Tool arguments template: ${conversionTool.arguments}`)
+        console.log(`Tool enabled: ${conversionTool.enabled}`)
+
+        const outputPath = docxPath.replace('.docx', '.pdf')
+        const outputDir = path.dirname(outputPath)
+        const inputDir = path.dirname(docxPath)
+
+        // Build command with all placeholders
+        const normalizedDocxPath = path.resolve(docxPath).replace(/\\/g, '/')
+        const normalizedOutputPath = path.resolve(outputPath).replace(/\\/g, '/')
+        const normalizedOutputDir = path.resolve(outputDir).replace(/\\/g, '/')
+        const normalizedInputDir = path.resolve(inputDir).replace(/\\/g, '/')
+        const normalizedToolPath = path.resolve(conversionTool.path).replace(/\\/g, '/')
+
+        let command = conversionTool.arguments
+          .replace('%input', `"${normalizedDocxPath}"`)
+          .replace('%output', `"${normalizedOutputPath}"`)
+          .replace('%inputFile', `"${normalizedDocxPath}"`)
+          .replace('%outputFile', `"${normalizedOutputPath}"`)
+          .replace('%inputDir', `"${normalizedInputDir}"`)
+          .replace('%outputDir', `"${normalizedOutputDir}"`)
+
+        // If the command still contains unreplaced placeholders, try common LibreOffice patterns
+        if (command.includes('%')) {
+          console.warn('Command still contains unreplaced placeholders, trying common LibreOffice pattern')
+          command = `--headless --convert-to pdf --outdir "${normalizedOutputDir}" "${normalizedDocxPath}"`
+        }
+
+        const fullCommand = `"${normalizedToolPath}" ${command}`
+
+        console.log(`Converting template: ${fullCommand}`)
+        console.log(`Input file: ${docxPath}`)
+        console.log(`Output file: ${outputPath}`)
+        console.log(`Output directory: ${outputDir}`)
+
+        await execAsync(fullCommand, { maxBuffer: 1024 * 1024 })
+
+        if (!fs.existsSync(outputPath)) {
+          console.error(`PDF conversion failed - output file not found: ${outputPath}`)
+
+          // Try to find the PDF file in the output directory with a different name
+          const files = fs.readdirSync(outputDir)
+          const pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'))
+          console.log(`PDF files in output directory: ${pdfFiles.join(', ')}`)
+
+          // Look for a file with similar name
+          const baseName = path.basename(docxPath, '.docx').toLowerCase()
+          const matchingFiles = pdfFiles.filter(f =>
+            f.toLowerCase().includes(baseName) ||
+            baseName.includes(f.toLowerCase().replace('.pdf', ''))
+          )
+
+          if (matchingFiles.length > 0) {
+            const actualOutputPath = path.join(outputDir, matchingFiles[0])
+            console.log(`Found matching PDF file: ${actualOutputPath}`)
+            return actualOutputPath
+          }
+
+          throw new Error(`PDF conversion failed - output file not found: ${outputPath}`)
+        }
+
+        return outputPath
+      } catch (error) {
+        console.error('Error converting DOCX to PDF:', error.message)
+        throw error
+      }
+    },
+
+    // Apply PDF overlay to page
+    async applyPdfOverlay (finalDoc, page, overlayPdfPath, pageNumber) {
+      const fs = require('fs')
+
+      try {
+        // Load overlay PDF
+        const overlayBytes = fs.readFileSync(overlayPdfPath)
+        const overlayDoc = await require('pdf-lib').PDFDocument.load(overlayBytes)
+
+        if (overlayDoc.getPageCount() === 0) {
+          console.log(`Overlay PDF has no pages for page ${pageNumber}, skipping`)
+          return
+        }
+
+        // Get overlay page
+        const overlayPage = overlayDoc.getPage(0)
+        const overlaySize = overlayPage.getSize()
+        const pageSize = page.getSize()
+
+        // Scale overlay to fit page
+        const scaleX = pageSize.width / overlaySize.width
+        const scaleY = pageSize.height / overlaySize.height
+        const scale = Math.min(scaleX, scaleY)
+
+        const scaledWidth = overlaySize.width * scale
+        const scaledHeight = overlaySize.height * scale
+
+        // Center the overlay
+        const x = (pageSize.width - scaledWidth) / 2
+        const y = (pageSize.height - scaledHeight) / 2
+
+        // Embed and draw overlay
+        const embeddedOverlay = await finalDoc.embedPage(overlayPage)
+        page.drawPage(embeddedOverlay, {
+          x: x,
+          y: y,
+          width: scaledWidth,
+          height: scaledHeight
+        })
+
+        console.log(`Applied overlay to page ${pageNumber}`)
+      } catch (error) {
+        console.error(`Error applying PDF overlay to page ${pageNumber}:`, error.message)
       }
     }
   },
