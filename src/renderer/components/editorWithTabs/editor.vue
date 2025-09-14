@@ -75,8 +75,8 @@
 <script>
 import { shell } from 'electron'
 import log from 'electron-log'
-import path from 'path'
 import fs from 'fs'
+import path from 'path'
 import { mapState } from 'vuex'
 // import ViewImage from 'view-image'
 import bus from '@/bus'
