@@ -94,8 +94,8 @@
         <div class="help-text">
           <p><strong>Extensions:</strong> Comma-separated list of file extensions this tool can convert (e.g. "docx, doc")</p>
           <p><strong>Path:</strong> Full path to the conversion tool executable</p>
-          <p><strong>Arguments:</strong> Command line arguments. Use %input for input file and %output for output file</p>
-          <p><strong>Example:</strong> For LibreOffice: <code>soffice.exe --headless --convert-to pdf %input --outdir %output</code></p>
+          <p><strong>Arguments:</strong> Command line arguments. Use %input for input file and %output or %inputDirfor output file</p>
+          <p><strong>Example:</strong> For LibreOffice: <code>soffice.exe --headless --convert-to pdf %input --outdir %inputDir</code></p>
         </div>
       </template>
     </compound>
