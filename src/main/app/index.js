@@ -224,7 +224,25 @@ class App {
     if (_openFilesCache.length) {
       this._openFilesToOpen()
     } else {
-      this._createEditorWindow()
+      // Check if we should automatically load the most recent document
+      const recentDocuments = this._accessor.menu.getRecentlyUsedDocuments()
+      const shouldAutoLoadRecent = recentDocuments.length > 0 &&
+        startUpAction !== 'folder' &&
+        !args['--new-window']
+
+      if (shouldAutoLoadRecent) {
+        // Load the most recent document automatically
+        const mostRecentDoc = recentDocuments[0]
+        const info = normalizeMarkdownPath(mostRecentDoc)
+        if (info) {
+          _openFilesCache.push(info)
+          this._openFilesToOpen()
+        } else {
+          this._createEditorWindow()
+        }
+      } else {
+        this._createEditorWindow()
+      }
     }
 
     // this.shortcutCapture = new ShortcutCapture()
