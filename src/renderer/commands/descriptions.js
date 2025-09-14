@@ -18,6 +18,7 @@ const commandDescriptions = Object.freeze({
   'file.preferences': 'MarkText: Preferences',
   'file.close-tab': 'File: Close current Tab',
   'file.close-window': 'File: Close Window',
+  'file.merge-documents': 'File: Merge Documents',
   'file.quit': 'MarkText: Quit',
   'edit.undo': 'Edit: Undo',
   'edit.redo': 'Edit: Redo',

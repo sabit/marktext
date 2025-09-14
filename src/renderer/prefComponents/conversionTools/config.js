@@ -3,11 +3,11 @@
 
 export const defaultConversionTools = [
   {
-    name: 'LibreOffice DOCX to PDF',
-    extensions: ['docx', 'doc'],
-    path: '',
-    arguments: '--headless --convert-to pdf %input --outdir %output',
-    enabled: false
+    name: 'LibreOffice',
+    extensions: ['docx', 'doc', 'xlsx', 'xls'],
+    path: 'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    arguments: '--headless --convert-to pdf %input --outdir %inputDir',
+    enabled: true
   },
   {
     name: 'Pandoc DOCX to PDF',

@@ -8,4 +8,4 @@
    
    2. Hardware [h15963-ss-powerscale-all-flash-nodes.pdf](file://C:/devel/marktext/docs/samples/h15963-ss-powerscale-all-flash-nodes.pdf)
 
-4. Financial [file_example_XLS_10.xls](file://C:/devel/marktext/docs/samples/file_example_XLS_10.xls)
+4. Financial [file_example_XLS_10.xls](file://C:/devel/marktext/docs/samples/file_example_XLS_10.xls)6
