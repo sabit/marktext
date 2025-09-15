@@ -1379,9 +1379,12 @@ export default {
 
           // Apply resizing if enabled
           const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false
+          const originalSizes = [] // Track original sizes before resizing
           if (resizeEnabled) {
             for (let i = 0; i < copiedPages.length; i++) {
               const page = copiedPages[i]
+              const originalSize = page.getSize()
+              originalSizes.push(originalSize)
               const pageNumber = globalPageCounter + tocPageCount + i // Account for ToC pages in page numbering
               this.resizePageToA4(page, pageNumber)
             }
@@ -1394,7 +1397,7 @@ export default {
             // Calculate the absolute page number in the final document (ToC pages + current content page)
             const absoluteStartPage = tocPageCount + (globalPageCounter - 1) // Current PDF starts at this absolute position
             const totalDocumentPages = totalPages + tocPageCount // Total pages = content + ToC
-            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount)
+            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes)
           } else {
             console.log('No template directory configured, skipping template overlays')
           }
@@ -1960,28 +1963,9 @@ export default {
       console.log(`Page ${pageNumber} needs resizing to A4 format`)
 
       try {
-        // Always target A4 dimensions regardless of original orientation
-        // This ensures all pages are exactly the same size for consistent overlay positioning
-        const targetWidth = A4_WIDTH
-        const targetHeight = A4_HEIGHT
-
-        // Calculate scale factors for both dimensions
-        const scaleX = targetWidth / width
-        const scaleY = targetHeight / height
-
-        // Use the smaller scale to ensure content fits within A4 bounds
-        const scale = Math.min(scaleX, scaleY)
-
-        // Calculate new dimensions
-        const newWidth = width * scale
-        const newHeight = height * scale
-
-        console.log(`Scaling page ${pageNumber} by factor ${scale.toFixed(3)} to ${newWidth.toFixed(2)}x${newHeight.toFixed(2)} points`)
-        console.log(`Target A4 dimensions: ${targetWidth}x${targetHeight} points`)
-
-        // Resize the page to the scaled dimensions
-        page.setSize(newWidth, newHeight)
-        console.log(`Successfully resized page ${pageNumber} to fit within A4 format`)
+        // Always set page size to A4 to ensure final document is A4
+        page.setSize(A4_WIDTH, A4_HEIGHT)
+        console.log(`Set page ${pageNumber} size to A4: ${A4_WIDTH}x${A4_HEIGHT} points`)
         return true
       } catch (resizeError) {
         console.error(`Error resizing page ${pageNumber}:`, resizeError.message)
@@ -2064,7 +2048,7 @@ export default {
     },
 
     // Apply template overlays to pages using docxtemplater
-    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1) {
+    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1, originalSizes = []) {
       const fs = require('fs')
       const path = require('path')
       const os = require('os')
@@ -2127,7 +2111,7 @@ export default {
           const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, execAsync)
 
           // Apply as overlay
-          await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber)
+          await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber, originalSizes[i])
 
           // Clean up temporary files
           try {
@@ -2310,7 +2294,7 @@ export default {
     },
 
     // Apply PDF overlay to page
-    async applyPdfOverlay (finalDoc, page, overlayPdfPath, pageNumber) {
+    async applyPdfOverlay (finalDoc, page, overlayPdfPath, pageNumber, originalSize = null) {
       const fs = require('fs')
 
       try {
@@ -2326,19 +2310,55 @@ export default {
         // Get overlay page
         const overlayPage = overlayDoc.getPage(0)
         const overlaySize = overlayPage.getSize()
-        const pageSize = page.getSize()
+        const currentPageSize = page.getSize()
 
-        // Scale overlay to fit page
-        const scaleX = pageSize.width / overlaySize.width
-        const scaleY = pageSize.height / overlaySize.height
-        const scale = Math.min(scaleX, scaleY)
+        console.log(`Page ${pageNumber} - Current page size: ${currentPageSize.width.toFixed(2)}x${currentPageSize.height.toFixed(2)}`)
+        if (originalSize) {
+          console.log(`Page ${pageNumber} - Original page size: ${originalSize.width.toFixed(2)}x${originalSize.height.toFixed(2)}`)
+        }
+        console.log(`Page ${pageNumber} - Overlay size: ${overlaySize.width.toFixed(2)}x${overlaySize.height.toFixed(2)}`)
 
-        const scaledWidth = overlaySize.width * scale
-        const scaledHeight = overlaySize.height * scale
+        // A4 dimensions in points (72 DPI): 595.28 x 841.89
+        const A4_WIDTH = 595.28
+        const A4_HEIGHT = 841.89
 
-        // Center the overlay
-        const x = (pageSize.width - scaledWidth) / 2
-        const y = (pageSize.height - scaledHeight) / 2
+        console.log(`Page ${pageNumber} - A4 dimensions: ${A4_WIDTH}x${A4_HEIGHT}`)
+
+        // Check if overlay is already A4 size (within tolerance)
+        const tolerance = 10 // points - increased tolerance for better detection
+        const widthDiff = Math.abs(overlaySize.width - A4_WIDTH)
+        const heightDiff = Math.abs(overlaySize.height - A4_HEIGHT)
+        const isOverlayA4 = widthDiff <= tolerance && heightDiff <= tolerance
+
+        console.log(`Page ${pageNumber} - Size differences: width=${widthDiff.toFixed(2)}, height=${heightDiff.toFixed(2)}`)
+        console.log(`Page ${pageNumber} - Is overlay A4 size: ${isOverlayA4}`)
+
+        let scale, scaledWidth, scaledHeight, x, y
+
+        if (isOverlayA4) {
+          // Overlay is A4 size - apply at full A4 size since final document is A4
+          console.log(`Page ${pageNumber} - Overlay is A4 size, applying at full A4 size`)
+          scale = 1.0
+          scaledWidth = A4_WIDTH
+          scaledHeight = A4_HEIGHT
+        } else {
+          // Overlay is not A4 size - scale it to fit A4
+          console.log(`Page ${pageNumber} - Overlay is not A4 size, scaling to A4`)
+          const scaleX = A4_WIDTH / overlaySize.width
+          const scaleY = A4_HEIGHT / overlaySize.height
+          scale = Math.min(scaleX, scaleY)
+          scaledWidth = overlaySize.width * scale
+          scaledHeight = overlaySize.height * scale
+        }
+
+        // Position overlay to cover the entire page from (0, 0)
+        x = 0
+        y = 0
+        scaledWidth = A4_WIDTH
+        scaledHeight = A4_HEIGHT
+
+        console.log(`Page ${pageNumber} - Scaling overlay by ${scale.toFixed(3)} to ${scaledWidth.toFixed(2)}x${scaledHeight.toFixed(2)}`)
+        console.log(`Page ${pageNumber} - Positioning overlay at (${x.toFixed(2)}, ${y.toFixed(2)})`)
 
         // Embed and draw overlay
         const embeddedOverlay = await finalDoc.embedPage(overlayPage)
