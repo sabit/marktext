@@ -1,17 +1,17 @@
-import fs from 'fs-extra'
-import path from 'path'
+import { exists, isDirectory, isFile } from 'common/filesystem'
+import { MARKDOWN_EXTENSIONS, isMarkdownFile } from 'common/filesystem/paths'
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import log from 'electron-log'
-import { isDirectory, isFile, exists } from 'common/filesystem'
-import { MARKDOWN_EXTENSIONS, isMarkdownFile } from 'common/filesystem/paths'
-import { checkUpdates, userSetting } from './marktext'
-import { showTabBar } from './view'
+import fs from 'fs-extra'
+import path from 'path'
 import { COMMANDS } from '../../commands'
 import { EXTENSION_HASN, PANDOC_EXTENSIONS, URL_REG } from '../../config'
 import { normalizeAndResolvePath, writeFile } from '../../filesystem'
 import { writeMarkdownFile } from '../../filesystem/markdown'
 import { getPath, getRecommendTitleFromMarkdownString } from '../../utils'
 import pandoc from '../../utils/pandoc'
+import { checkUpdates, userSetting } from './marktext'
+import { showTabBar } from './view'
 
 // TODO(refactor): "save" and "save as" should be moved to the editor window (editor.js) and
 // the renderer should communicate only with the editor window for file relevant stuff.
@@ -448,6 +448,50 @@ ipcMain.on('mt::format-link-click', (e, { data, dirname }) => {
       shell.openPath(pathname)
     }
   }
+})
+
+// Handle reveal in explorer request from renderer process
+ipcMain.on('mt::reveal-in-explorer', (e, filePath) => {
+  console.log('Received mt::reveal-in-explorer with path:', filePath)
+  const { exec } = require('child_process')
+  const path = require('path')
+
+  // Ensure the path exists
+  const fs = require('fs')
+  if (!fs.existsSync(filePath)) {
+    console.error('File does not exist:', filePath)
+    return
+  }
+
+  // Normalize the path
+  const absPath = path.resolve(filePath)
+  console.log('Resolved absolute path:', absPath)
+
+  // Use Windows start command to open explorer and select the file
+  // This is more reliable than direct explorer.exe calls
+  const command = `start "" "explorer.exe" /select,"${absPath}"`
+  console.log('Executing command:', command)
+
+  exec(command, (err) => {
+    if (err) {
+      console.error('Failed to open explorer with start command:', err)
+      // Try fallback method: open containing folder
+      console.log('Trying fallback: opening containing folder')
+      const dirPath = path.dirname(absPath)
+      const fallbackCommand = `start "" "explorer.exe" "${dirPath}"`
+      console.log('Executing fallback command:', fallbackCommand)
+
+      exec(fallbackCommand, (fallbackErr) => {
+        if (fallbackErr) {
+          console.error('Fallback method also failed:', fallbackErr)
+        } else {
+          console.log('Successfully opened containing folder with fallback method')
+        }
+      })
+    } else {
+      console.log('Successfully opened explorer and selected file:', absPath)
+    }
+  })
 })
 
 // --- commands -------------------------------------

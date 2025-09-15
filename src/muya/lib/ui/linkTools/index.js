@@ -1,5 +1,7 @@
+import { ipcRenderer } from 'electron'
+import path from 'path'
+import { h, patch } from '../../parser/render/snabbdom'
 import BaseFloat from '../baseFloat'
-import { patch, h } from '../../parser/render/snabbdom'
 import icons from './config'
 
 import './index.css'
@@ -70,8 +72,12 @@ class LinkTools extends BaseFloat {
     const children = icons.map(i => {
       let icon
       let iconWrapperSelector
-      if (i.icon) {
-        // SVG icon Asset
+      if (typeof i.icon === 'string') {
+        // SVG symbol icon
+        iconWrapperSelector = 'div.icon-wrapper'
+        icon = h('svg.icon', { attrs: { 'aria-hidden': 'true' } }, h('use', { attrs: { 'xlink:href': `#${i.icon}` } }))
+      } else if (i.icon) {
+        // PNG icon Asset
         iconWrapperSelector = 'div.icon-wrapper'
         icon = h('i.icon', h('i.icon-inner', {
           style: {
@@ -105,16 +111,34 @@ class LinkTools extends BaseFloat {
   selectItem (event, item) {
     event.preventDefault()
     event.stopPropagation()
-    const { contentState } = this.muya
     switch (item.type) {
-      case 'unlink':
-        contentState.unlink(this.linkInfo)
-        this.hide()
-        break
       case 'jump':
         this.options.jumpClick(this.linkInfo)
         this.hide()
         break
+      case 'reveal':
+        this.revealInExplorer(this.linkInfo)
+        this.hide()
+        break
+    }
+  }
+
+  revealInExplorer (linkInfo) {
+    console.log('revealInExplorer called with:', linkInfo)
+    const { href } = linkInfo
+    if (href && href.startsWith('file://')) {
+      console.log('Processing file:// URL:', href)
+      let filePath = href.substring(7) // Remove 'file://' prefix
+      if (process.platform === 'win32' && filePath.startsWith('/')) {
+        filePath = filePath.substring(1) // Remove leading slash on Windows
+      }
+      const absPath = path.resolve(filePath)
+      console.log('Resolved path:', absPath)
+      // Send IPC message to main process to reveal in explorer
+      ipcRenderer.send('mt::reveal-in-explorer', absPath)
+      console.log('IPC message sent')
+    } else {
+      console.log('Not a file:// URL or href is empty:', href)
     }
   }
 }

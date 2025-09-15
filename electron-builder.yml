@@ -90,9 +90,9 @@ win:
   icon: "resources/icons/icon.ico"
   target:
   - target: "nsis"
-    arch: [ia32, x64]
+    arch: [x64]
   - target: "zip"
-    arch: [ia32, x64]
+    arch: [x64]
   requestedExecutionLevel: "asInvoker"
 nsis:
   artifactName: "marktext-setup.${ext}"

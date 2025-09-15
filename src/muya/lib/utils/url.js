@@ -1,9 +1,14 @@
+import { isWin } from '../config'
 import { isValidAttribute } from '../utils/dompurify'
-import { isWin } from '../config' // __MARKTEXT_PATCH__
-import { hasMarkdownExtension } from './markdownFile' // __MARKTEXT_PATCH__
+import { hasMarkdownExtension } from './markdownFile'
 
 export const sanitizeHyperlink = rawLink => {
   if (rawLink && typeof rawLink === 'string') {
+    // Allow file:// URLs to pass through without DOMPurify validation
+    if (rawLink.startsWith('file://')) {
+      return rawLink
+    }
+
     if (isValidAttribute('a', 'href', rawLink)) {
       return rawLink
     }
