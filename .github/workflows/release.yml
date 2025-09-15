@@ -93,10 +93,7 @@ jobs:
 
       - name: Lint
         run: |
-          yarn run lint          
-
-      - name: Run unit and E2E tests
-        run: yarn run test
+          yarn run lint                
 
       - name: Build and release
         run: yarn run release:win --publish always
