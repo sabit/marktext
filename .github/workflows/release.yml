@@ -15,7 +15,7 @@ jobs:
       MARKTEXT_EXIT_ON_ERROR: 1
 
     steps:
-      - name: Check out Git repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -23,8 +23,18 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Ensure setuptools and distutils
+        run: python -m pip install --upgrade pip setuptools
+
+      # Install Visual Studio 2019 Build Tools and add MSBuild to PATH
+      - name: Install Visual Studio 2019 Build Tools workload
+        run: |
+          choco install visualstudio2019buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional" -y
+          echo "C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+        shell: pwsh
+
+      - name: Set Yarn msvs_version to 2019
+        run: yarn config set msvs_version 2019
 
       - name: Set GYP_MSVS_VERSION
         run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -32,11 +42,6 @@ jobs:
 
       - name: Install latest node-gyp globally
         run: npm install -g node-gyp@latest
-
-      - name: Clean node-gyp cache
-        run: |
-          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\node-gyp\Cache" -ErrorAction SilentlyContinue
-        shell: pwsh
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -67,6 +72,19 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --check-files --frozen-lockfile
+
+      # Set environment variables for building native modules for Electron
+      - name: Set npm_config_* for Electron native builds
+        run: |
+          echo "npm_config_target=$(node -p \"require('./package.json').devDependencies.electron.replace('^','').replace('~','')\")" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "npm_config_arch=x64" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "npm_config_disturl=https://electronjs.org/headers" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "npm_config_runtime=electron" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "npm_config_build_from_source=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild -f
 
       - name: Lint
         run: |
