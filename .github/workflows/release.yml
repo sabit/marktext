@@ -37,7 +37,7 @@ jobs:
         run: yarn config set msvs_version 2019
 
       - name: Set GYP_MSVS_VERSION
-        run: echo "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
       - name: Install latest node-gyp globally
