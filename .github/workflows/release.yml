@@ -15,7 +15,7 @@ jobs:
       MARKTEXT_EXIT_ON_ERROR: 1
 
     steps:
-      - name: Check out Git repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -24,23 +24,21 @@ jobs:
           python-version: '3.x'
 
       - name: Ensure setuptools and distutils
-        run: |
-          python -m pip install --upgrade pip setuptools
+        run: python -m pip install --upgrade pip setuptools
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      # This step ensures the correct Visual Studio Build Tools workload is installed and discoverable
+      - name: Install required Visual Studio Build Tools workload
+        run: |
+          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional" -y
+          echo "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+        shell: pwsh
 
       - name: Set GYP_MSVS_VERSION
-        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: echo "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
       - name: Install latest node-gyp globally
         run: npm install -g node-gyp@latest
-
-      - name: Clean node-gyp cache
-        run: |
-          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\node-gyp\Cache" -ErrorAction SilentlyContinue
-        shell: pwsh
 
       - name: Install Node.js
         uses: actions/setup-node@v4
