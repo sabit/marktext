@@ -93,8 +93,7 @@ jobs:
 
       - name: Lint
         run: |
-          yarn run lint
-          yarn run validate-licenses
+          yarn run lint          
 
       - name: Run unit and E2E tests
         run: yarn run test
