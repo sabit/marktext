@@ -1226,12 +1226,19 @@ export default {
 
     async convertAndMergeDocuments (sections, basePath) {
       const path = require('path')
+      const fs = require('fs')
       const { exec } = require('child_process')
       const { promisify } = require('util')
       const execAsync = promisify(exec)
 
       const baseDir = path.dirname(basePath)
-      const outputDir = baseDir
+      const cacheDir = path.join(baseDir, 'cache')
+      const outputDir = cacheDir
+
+      // Create cache directory if it doesn't exist
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true })
+      }
 
       // Get conversion tools from preferences
       const conversionTools = this.$store.state.preferences.conversionTools || []
@@ -1267,7 +1274,7 @@ export default {
             }
 
             console.log(`Found conversion tool: ${tool.name} for ${filePath}`)
-            pdfPath = await this.convertToPdf(filePath, tool, outputDir, execAsync)
+            pdfPath = await this.convertToPdf(filePath, tool, outputDir, outputDir, execAsync)
             console.log(`Converted to PDF: ${pdfPath}`)
           } else {
             console.log(`File is already PDF: ${filePath}`)
@@ -1397,7 +1404,7 @@ export default {
             // Calculate the absolute page number in the final document (ToC pages + current content page)
             const absoluteStartPage = tocPageCount + (globalPageCounter - 1) // Current PDF starts at this absolute position
             const totalDocumentPages = totalPages + tocPageCount // Total pages = content + ToC
-            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes)
+            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes, baseDir)
           } else {
             console.log('No template directory configured, skipping template overlays')
           }
@@ -1717,7 +1724,7 @@ export default {
       return null
     },
 
-    async convertToPdf (inputPath, tool, outputDir, execAsync) {
+    async convertToPdf (inputPath, tool, outputDir, outDir, execAsync) {
       // Convert file URL to path if needed
       const filePath = this.convertFileUrlToPath(inputPath)
       const fileName = path.basename(filePath, path.extname(filePath))
@@ -1768,6 +1775,7 @@ export default {
         .replace('%outputDir', `"${normalizedOutputDir}"`)
         .replace('%inputDir', `"${normalizedInputDir}"`)
         .replace('%outputFile', `"${outputPath}"`)
+        .replace('%outdir', `"${outDir}"`)
 
       const fullCommand = `"${normalizedToolPath}" ${command}`
 
@@ -2048,7 +2056,7 @@ export default {
     },
 
     // Apply template overlays to pages using docxtemplater
-    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1, originalSizes = []) {
+    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1, originalSizes = [], baseDir) {
       const fs = require('fs')
       const path = require('path')
       const os = require('os')
@@ -2108,7 +2116,7 @@ export default {
           const processedDocxPath = await this.processDocxTemplate(templatePath, pageTitle, displayPageNumber, totalPages - tocPageCount, tempDir)
 
           // Convert to PDF
-          const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, execAsync)
+          const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, tempDir, execAsync)
 
           // Apply as overlay
           await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber, originalSizes[i])
@@ -2205,7 +2213,7 @@ export default {
     },
 
     // Convert DOCX to PDF using LibreOffice
-    async convertDocxToPdf (docxPath, execAsync) {
+    async convertDocxToPdf (docxPath, outDir, execAsync) {
       const fs = require('fs')
       const path = require('path')
 
@@ -2246,6 +2254,7 @@ export default {
           .replace('%outputFile', `"${normalizedOutputPath}"`)
           .replace('%inputDir', `"${normalizedInputDir}"`)
           .replace('%outputDir', `"${normalizedOutputDir}"`)
+          .replace('%outdir', `"${outDir}"`)
 
         // If the command still contains unreplaced placeholders, try common LibreOffice patterns
         if (command.includes('%')) {
