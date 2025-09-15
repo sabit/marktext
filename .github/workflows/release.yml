@@ -8,7 +8,6 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    continue-on-error: false
     timeout-minutes: 45
 
     env:
@@ -19,8 +18,14 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
-      - name: Setup MSVC Build Tools
+      # Ensures MSBuild and Visual Studio tools are discoverable
+      - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+
+      # Optional, but can help node-gyp locate MSVC
+      - name: Set GYP_MSVS_VERSION
+        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -28,17 +33,6 @@ jobs:
           node-version: 16
           cache: 'yarn'
           cache-dependency-path: yarn.lock
-
-      - name: Set GYP_MSVS_VERSION
-        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
-        shell: pwsh
-
-      - name: Fix node-gyp (force latest)
-        run: |
-          npm install --global node-gyp@latest
-          npm prefix -g | % {npm config set node_gyp "$_\\node_modules\\node-gyp\\bin\\node-gyp.js"}
-          node-gyp install
-        shell: pwsh
 
       - name: Cache node_modules
         uses: actions/cache@v4
@@ -60,6 +54,7 @@ jobs:
           path: ${{ env.LOCALAPPDATA }}\\electron-builder\\cache
           key: ${{ runner.os }}-electron-builder-cache-v2-${{ hashFiles('**/yarn.lock') }}
 
+      # This is the step where node-gyp/electron-rebuild will now succeed
       - name: Install dependencies
         run: yarn install --check-files --frozen-lockfile
 
