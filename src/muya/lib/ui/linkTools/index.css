@@ -60,11 +60,10 @@
   transition: all .25s ease-in-out;
 }
 
-.ag-link-tools li.item .icon-wrapper i.icon > i[class^=icon-] {
-  display: inline-block;
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(18px 0 currentColor); 
-  position: relative;
-  left: -18px;
+.ag-link-tools li.item .icon-wrapper svg.icon {
+  width: 18px;
+  height: 18px;
+  color: var(--iconColor);
+  fill: currentColor;
+  transition: all .25s ease-in-out;
 }

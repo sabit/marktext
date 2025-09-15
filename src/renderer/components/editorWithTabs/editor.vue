@@ -616,6 +616,22 @@ export default {
       this.editor.on('format-click', ({ event, formatType, data }) => {
         const ctrlOrMeta = (isOsx && event.metaKey) || (!isOsx && event.ctrlKey)
         if (formatType === 'link' && ctrlOrMeta) {
+          // Check if it's a file:// URL and reveal in explorer
+          if (data.href && data.href.startsWith('file://')) {
+            console.log('Ctrl+click on file:// URL, revealing in explorer:', data.href)
+            // Send IPC message to main process to reveal in explorer
+            const { ipcRenderer } = require('electron')
+            const path = require('path')
+
+            let filePath = data.href.substring(7) // Remove 'file://' prefix
+            if (process.platform === 'win32' && filePath.startsWith('/')) {
+              filePath = filePath.substring(1) // Remove leading slash on Windows
+            }
+            const absPath = path.resolve(filePath)
+            ipcRenderer.send('mt::reveal-in-explorer', absPath)
+            return // Don't continue with normal link click
+          }
+
           this.$store.dispatch('FORMAT_LINK_CLICK', { data, dirname: window.DIRNAME })
         } else if (formatType === 'image' && ctrlOrMeta) {
           if (this.imageViewer) {
