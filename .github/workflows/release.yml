@@ -76,7 +76,9 @@ jobs:
       # Set environment variables for building native modules for Electron
       - name: Set npm_config_* for Electron native builds
         run: |
-          echo "npm_config_target=$(node -p \"require('./package.json').devDependencies.electron.replace('^','').replace('~','')\")" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $electronVersion = node -p "require('./package.json').devDependencies?.electron || require('./package.json').dependencies?.electron"
+          $electronVersion = $electronVersion.TrimStart('^~')
+          echo "npm_config_target=$electronVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_arch=x64" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_disturl=https://electronjs.org/headers" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_runtime=electron" | Out-File -FilePath $env:GITHUB_ENV -Append
