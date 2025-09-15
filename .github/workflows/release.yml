@@ -18,13 +18,24 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
-      # Ensures MSBuild and Visual Studio tools are discoverable
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # Optional, but can help node-gyp locate MSVC
       - name: Set GYP_MSVS_VERSION
         run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Install latest node-gyp globally
+        run: npm install -g node-gyp@latest
+
+      - name: Clean node-gyp cache
+        run: |
+          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\node-gyp\Cache" -ErrorAction SilentlyContinue
         shell: pwsh
 
       - name: Install Node.js
@@ -54,7 +65,6 @@ jobs:
           path: ${{ env.LOCALAPPDATA }}\\electron-builder\\cache
           key: ${{ runner.os }}-electron-builder-cache-v2-${{ hashFiles('**/yarn.lock') }}
 
-      # This is the step where node-gyp/electron-rebuild will now succeed
       - name: Install dependencies
         run: yarn install --check-files --frozen-lockfile
 
