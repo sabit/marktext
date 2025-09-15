@@ -19,6 +19,9 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
+      - name: Setup MSVC Build Tools
+        uses: microsoft/setup-msbuild@v2
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -26,8 +29,11 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: yarn.lock
 
-      # Workaround: Fix native build failure due to outdated node-gyp version.
-      - name: Fix node-gyp
+      - name: Set GYP_MSVS_VERSION
+        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Fix node-gyp (force latest)
         run: |
           npm install --global node-gyp@latest
           npm prefix -g | % {npm config set node_gyp "$_\\node_modules\\node-gyp\\bin\\node-gyp.js"}
