@@ -1,6 +1,6 @@
-import { isWin } from '../config'; // __MARKTEXT_PATCH__
+import { isWin } from '../config'
 import { isValidAttribute } from '../utils/dompurify'
-import { hasMarkdownExtension } from './markdownFile'; // __MARKTEXT_PATCH__
+import { hasMarkdownExtension } from './markdownFile'
 
 export const sanitizeHyperlink = rawLink => {
   if (rawLink && typeof rawLink === 'string') {
