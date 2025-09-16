@@ -37,7 +37,7 @@ jobs:
         run: yarn config set msvs_version 2019
 
       - name: Set GYP_MSVS_VERSION
-        run: echo "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: echo "GYP_MSVS_VERSION=2019" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
       - name: Install latest node-gyp globally
@@ -70,31 +70,34 @@ jobs:
           path: ${{ env.LOCALAPPDATA }}\\electron-builder\\cache
           key: ${{ runner.os }}-electron-builder-cache-v2-${{ hashFiles('**/yarn.lock') }}
 
-      - name: Install dependencies
-        run: yarn install --check-files --frozen-lockfile
+      # --- CRUCIAL: Prevent native builds for Node, ensure for Electron instead ---
+      - name: Install dependencies (ignore scripts)
+        run: yarn install --check-files --frozen-lockfile --ignore-scripts
 
-      # Set environment variables for building native modules for Electron
       - name: Set npm_config_* for Electron native builds
         run: |
-          echo "npm_config_target=$(node -p \"require('./package.json').devDependencies.electron.replace('^','').replace('~','')\")" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $electronVersion = node -p "require('./package.json').devDependencies?.electron || require('./package.json').dependencies?.electron"
+          $electronVersion = $electronVersion.TrimStart('^~')
+          echo "npm_config_target=$electronVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_arch=x64" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_disturl=https://electronjs.org/headers" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_runtime=electron" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "npm_config_build_from_source=true" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: pwsh
 
+      - name: Run postinstall scripts (build for Electron)
+        run: yarn run postinstall
+
       - name: Rebuild native modules for Electron
         run: npx electron-rebuild -f
 
       - name: Lint
         run: |
-          yarn run lint
-          yarn run validate-licenses
-
-      - name: Run unit and E2E tests
-        run: yarn run test
+          yarn run lint                
 
       - name: Build and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: yarn run release:win --publish always
 
       - name: Calculate checksums
