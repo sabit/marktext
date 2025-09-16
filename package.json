@@ -1,8 +1,8 @@
 {
   "name": "marktext",
-  "version": "0.17.1",
-  "homepage": "https://github.com/marktext/marktext/",
-  "description": "Next generation markdown editor",
+  "version": "1.0.0",
+  "homepage": "https://github.com/sabit/marktext/",
+  "description": "Marktext fork for doc merging",
   "license": "MIT",
   "main": "./dist/electron/main.js",
   "scripts": {
@@ -185,26 +185,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:marktext/marktext.git"
+    "url": "git@github.com:sabit/marktext.git"
   },
   "bugs": {
-    "url": "https://github.com/marktext/marktext/issues"
+    "url": "https://github.com/sabit/marktext/issues"
   },
   "author": {
-    "name": "Jocs",
-    "email": "ransixi@gmail.com",
-    "url": "https://github.com/Jocs"
+    "name": "Sabit",
+    "email": "sabitas@gmail.com",
+    "url": "https://github.com/sabit"
   },
-  "maintainer": [
+  "maintainer": [    
     {
-      "name": "Jocs",
-      "email": "ransixi@gmail.com",
-      "url": "https://github.com/Jocs"
-    },
-    {
-      "name": "Felix Häusler",
-      "email": "hfelix@protonmail.ch",
-      "url": "https://github.com/fxha"
+      "name": "Sabit",
+      "email": "sabitas@gmail.com",
+      "url": "https://github.com/sabit"
     }
   ]
 }
