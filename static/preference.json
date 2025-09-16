@@ -1,10 +1,10 @@
 {
-  "autoSave": false,
+  "autoSave": true,
   "autoSaveDelay": 5000,
   "titleBarStyle": "custom",
   "openFilesInNewWindow": false,
   "openFolderInNewWindow": false,
-  "zoom": 1.0,
+  "zoom": 1.75,
   "hideScrollbar": false,
   "wordWrapInToc": false,
   "fileSortBy": "created",
@@ -21,9 +21,9 @@
   "trimUnnecessaryCodeBlockEmptyLines": true,
   "editorLineWidth": "",
 
-  "autoPairBracket": true,
-  "autoPairMarkdownSyntax": true,
-  "autoPairQuote": true,
+  "autoPairBracket": false,
+  "autoPairMarkdownSyntax": false,
+  "autoPairQuote": false,
   "endOfLine": "default",
   "defaultEncoding": "utf8",
   "autoGuessEncoding": true,
@@ -52,7 +52,7 @@
   "theme": "light",
   "autoSwitchTheme": 2,
 
-  "spellcheckerEnabled": false,
+  "spellcheckerEnabled": true,
   "spellcheckerNoUnderline": false,
   "spellcheckerLanguage": "en-US",
 
@@ -67,7 +67,15 @@
   "searchFollowSymlinks": true,
 
   "watcherUsePolling": false,
-  "conversionTools": [],
+  "conversionTools": [
+    {
+      "name": "LibreOffice",
+      "path": "c:\\Program Files\\LibreOffice\\program\\soffice.exe",
+      "arguments": "--headless --convert-to pdf %input --outdir %outdir",
+      "enabled": true,
+      "extensions": ["doc", "docx", "odt", "rtf", "ppt", "pptx", "xls", "xlsx"]
+    }
+  ],
   "templateDirectory": "",
   "resizePagesToA4": true,
   "cliScript": ""
