@@ -96,6 +96,8 @@ jobs:
           yarn run lint                
 
       - name: Build and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: yarn run release:win --publish always
 
       - name: Calculate checksums
