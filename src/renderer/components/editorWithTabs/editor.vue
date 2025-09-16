@@ -1054,7 +1054,13 @@ export default {
       // Check if document is saved
       const { currentFile } = this
       if (!currentFile.isSaved) {
-        throw new Error('Please save the document before merging.')
+        notice.notify({
+          title: 'Document Not Saved',
+          type: 'warning',
+          message: 'Please save the document before merging.',
+          time: 0 // Don't auto-hide
+        })
+        return
       }
 
       // Emit merge started event
