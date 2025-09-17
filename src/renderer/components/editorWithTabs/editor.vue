@@ -1199,16 +1199,26 @@ export default {
             }
             currentSection = {
               title: cleanContent.replace(/^#+\s*/, ''),
-              docs: []
+              docs: [],
+              isMainSection: true, // Mark as main section
+              isSeparator: false
             }
           } else if (cleanContent) {
             // This is a regular bullet item - create section with nested numbering
             if (currentSection) {
               sections.push(currentSection)
             }
+
+            // Determine if this is a main section based on nesting level
+            // Main sections have nestingLevel === 0 (like 1., 2., 3.)
+            // Subsections have nestingLevel > 0 (like 1.1., 1.2., 2.1.)
+            const isMainSection = nestingLevel === 0
+
             currentSection = {
               title: `${nestedNumber} ${cleanContent}`,
-              docs: []
+              docs: [],
+              isMainSection: isMainSection,
+              isSeparator: false
             }
 
             // Check for file links in the original content
@@ -1222,8 +1232,9 @@ export default {
                 fitToPage: fitToPage
               })
             } else {
-              // Ordered list item without file link - show error as per requirements
-              throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
+              // For subsections, missing file links are allowed
+              // Only log a warning instead of throwing an error
+              console.warn(`Section "${nestedNumber} ${cleanContent}" has no document link - this is allowed for subsections`)
             }
           }
         } else {
@@ -1273,15 +1284,18 @@ export default {
 
       // Process each section
       const mergeList = []
-      const totalSections = sections.length
+      const totalNonSeparatorSections = sections.filter(s => !s.isSeparator).length
 
       for (let i = 0; i < sections.length; i++) {
         const section = sections[i]
         const sectionPdfs = []
 
-        // Emit progress update for section processing
-        const sectionProgress = 10 + (i / totalSections) * 30 // 10% to 40% range
-        bus.$emit('merge-progress', { progress: sectionProgress, message: `Processing section ${i + 1}/${totalSections}: ${section.title}` })
+        // Emit progress update for section processing (skip separator sections in progress calculation)
+        if (!section.isSeparator) {
+          const nonSeparatorIndex = sections.slice(0, i + 1).filter(s => !s.isSeparator).length - 1
+          const sectionProgress = 10 + (nonSeparatorIndex / totalNonSeparatorSections) * 30 // 10% to 40% range
+          bus.$emit('merge-progress', { progress: sectionProgress, message: `Processing section ${nonSeparatorIndex + 1}/${totalNonSeparatorSections}: ${section.title}` })
+        }
 
         for (const doc of section.docs) {
           // Convert file:// URL to file system path
@@ -1335,12 +1349,15 @@ export default {
 
         mergeList.push({
           title: section.title,
-          pdfs: sectionPdfs
+          pdfs: sectionPdfs,
+          isMainSection: section.isMainSection || false,
+          isSeparator: section.isSeparator || false
         })
       }
 
       // Debug output as per requirements
       console.log('Merge list:', mergeList)
+      console.log('Main sections in merge list:', mergeList.filter(s => s.isMainSection).map(s => s.title))
 
       // Emit progress update before merging
       bus.$emit('merge-progress', { progress: 60, message: 'Merging documents' })
@@ -1380,9 +1397,93 @@ export default {
 
       const finalDoc = await PDFDocument.create()
 
-      // Generate Table of Contents (now supports multi-page)
-      const tocPageCount = await this.generateTableOfContents(mergeList, finalDoc)
-      console.log(`Generated ${tocPageCount} ToC pages`)
+      // A4 dimensions in points (72 DPI): 595.28 x 841.89
+      const A4_WIDTH = 595.28
+      const A4_HEIGHT = 841.89
+
+      // Insert separator pages for main sections
+      const sectionsWithSeparators = []
+      let currentPageNumber = 1 // Track page numbers for template variables
+
+      for (let i = 0; i < mergeList.length; i++) {
+        const section = mergeList[i]
+        if (section.isMainSection) {
+          console.log(`Inserting separator page before main section: ${section.title}`)
+
+          // Calculate the page number where this section starts
+          let sectionStartPage = currentPageNumber
+
+          // Count pages in this section to determine where the next section starts
+          let sectionPageCount = 0
+          for (const pdf of section.pdfs) {
+            if (fs.existsSync(pdf.path)) {
+              const contentBytes = fs.readFileSync(pdf.path)
+              const doc = await PDFDocument.load(contentBytes)
+              sectionPageCount += doc.getPageCount()
+            }
+          }
+
+          // Collect sub-sections that belong to this main section
+          const subSections = []
+          const mainSectionBase = section.title.match(/^(\d+(?:\.\d+)*)/)
+          if (mainSectionBase) {
+            const basePattern = mainSectionBase[1]
+            // Look ahead to find sub-sections of this main section
+            for (let j = i + 1; j < mergeList.length; j++) {
+              const nextSection = mergeList[j]
+              if (nextSection.isMainSection) {
+                // We've reached the next main section, stop looking
+                break
+              }
+              if (!nextSection.isSeparator && nextSection.title) {
+                // Check if this is a sub-section of the current main section
+                const subSectionMatch = nextSection.title.match(/^(\d+(?:\.\d+)*)/)
+                if (subSectionMatch) {
+                  const subSectionBase = subSectionMatch[1]
+                  // Check if it starts with the main section number followed by a dot and more digits
+                  const subPattern = new RegExp(`^${basePattern}\\.\\d+`)
+                  if (subPattern.test(subSectionBase)) {
+                    // Remove the main section numbering to get just the sub-section title
+                    const cleanSubTitle = nextSection.title.replace(new RegExp(`^${basePattern}\\.`), '')
+                    subSections.push(cleanSubTitle)
+                  }
+                }
+              }
+            }
+          }
+
+          const subSectionsString = subSections.length > 0 ? subSections.join('\n') : ''
+
+          // Add separator section before main section with template variables
+          sectionsWithSeparators.push({
+            title: 'Section Separator',
+            docs: [],
+            isMainSection: false,
+            isSeparator: true,
+            nextSectionTitle: section.title,
+            nextSectionPageNumber: sectionStartPage,
+            totalDocumentPages: totalPages + 1, // Only count content pages + separator pages, exclude ToC
+            subSections: subSectionsString
+          })
+
+          // Update current page number for next section (account for separator page + content pages)
+          currentPageNumber += sectionPageCount + 1
+        }
+        sectionsWithSeparators.push(section)
+      }
+
+      console.log('Original sections: ' + mergeList.length + ', With separators: ' + sectionsWithSeparators.length)
+      console.log('Sections with separators:', sectionsWithSeparators.map(s => s.title + ' (' + (s.isMainSection ? 'main' : s.isSeparator ? 'separator' : 'subsection') + ')'))
+
+      // Use the modified list with separators
+      const finalMergeList = sectionsWithSeparators
+      const totalNonSeparatorSections = finalMergeList.filter(s => !s.isSeparator).length
+
+      console.log('Final merge list with separators:', finalMergeList.map(s => s.title + ' (' + (s.isSeparator ? 'separator' : 'content') + ')'))
+
+      // Generate Table of Contents AFTER separator pages are inserted
+      const tocPageCount = await this.generateTableOfContents(finalMergeList, finalDoc)
+      console.log('Generated ' + tocPageCount + ' ToC pages')
 
       // Emit progress update after ToC generation
       bus.$emit('merge-progress', { progress: 70, message: 'Table of Contents generated' })
@@ -1390,15 +1491,92 @@ export default {
       // Adjust global page counter to account for ToC pages
       let globalPageCounter = 1 // Content pages always start from page 1
 
-      // Template overlay functionality temporarily disabled to fix page numbering
-      // TODO: Re-implement template overlays using the simple page copying approach
-
-      for (const section of mergeList) {
+      for (const section of finalMergeList) {
         console.log(`Processing section: ${section.title}`)
 
-        // Emit progress update before processing each section
-        const sectionStartProgress = 70 + (mergeList.indexOf(section) / mergeList.length) * 20 // 70% to 90% range
-        bus.$emit('merge-progress', { progress: sectionStartProgress, message: `Processing section: ${section.title}` })
+        // Emit progress update before processing each section (skip separator sections)
+        if (!section.isSeparator) {
+          const nonSeparatorIndex = finalMergeList.slice(0, finalMergeList.indexOf(section) + 1).filter(s => !s.isSeparator).length - 1
+          const sectionStartProgress = 70 + (nonSeparatorIndex / totalNonSeparatorSections) * 20 // 70% to 90% range
+          bus.$emit('merge-progress', { progress: sectionStartProgress, message: `Processing section: ${section.title}` })
+        }
+
+        // Handle separator sections
+        if (section.isSeparator) {
+          console.log('Processing separator section')
+          console.log('Separator template variables:', {
+            nextSectionTitle: section.nextSectionTitle,
+            nextSectionPageNumber: section.nextSectionPageNumber,
+            totalDocumentPages: section.totalDocumentPages,
+            subSections: section.subSections
+          })
+          // Create a blank A4 page for the separator
+          const separatorPage = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+
+          // Apply separator.docx overlay if available
+          const templateDir = this.$store.state.preferences.templateDirectory
+          if (templateDir && fs.existsSync(templateDir)) {
+            const separatorTemplatePath = path.join(templateDir, 'separator.docx')
+            if (fs.existsSync(separatorTemplatePath)) {
+              console.log('Applying separator.docx overlay')
+
+              // Create temporary directory for processed templates
+              const os = require('os')
+              const tempDir = path.join(os.tmpdir(), 'marktext-templates')
+              if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true })
+              }
+
+              try {
+                // Process separator template with proper template variables
+                const separatorTitle = section.nextSectionTitle || 'Section Separator'
+                const separatorPageNumber = section.nextSectionPageNumber || 0
+                const separatorTotalPages = section.totalDocumentPages || totalPages
+
+                console.log(`Processing separator template for: ${separatorTitle} (page ${separatorPageNumber}/${separatorTotalPages})`)
+                if (section.subSections) {
+                  console.log(`Sub-sections for this separator: ${section.subSections}`)
+                }
+
+                const processedDocxPath = await this.processDocxTemplate(
+                  separatorTemplatePath,
+                  separatorTitle,
+                  separatorPageNumber,
+                  separatorTotalPages,
+                  tempDir,
+                  section.subSections || '' // Use collected sub-sections
+                )
+
+                console.log('Separator template processed successfully:', processedDocxPath)
+
+                // Convert to PDF
+                const { exec } = require('child_process')
+                const { promisify } = require('util')
+                const execAsync = promisify(exec)
+                const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, tempDir, execAsync)
+
+                // Apply as overlay
+                await this.applyPdfOverlay(finalDoc, separatorPage, processedPdfPath, globalPageCounter, null, false)
+
+                // Clean up temporary files
+                try {
+                  fs.unlinkSync(processedDocxPath)
+                  fs.unlinkSync(processedPdfPath)
+                } catch (cleanupError) {
+                  console.warn('Failed to clean up separator temporary files:', cleanupError.message)
+                }
+              } catch (separatorError) {
+                console.warn('Failed to apply separator overlay:', separatorError.message)
+                // Continue without separator overlay - blank page is still added
+              }
+            } else {
+              console.log('No separator.docx template found, using blank page')
+            }
+          }
+
+          globalPageCounter++
+          continue
+        }
 
         for (const pdf of section.pdfs) {
           if (!fs.existsSync(pdf.path)) {
@@ -1424,7 +1602,7 @@ export default {
               const page = copiedPages[i]
               const originalSize = page.getSize()
               originalSizes.push(originalSize)
-              const pageNumber = globalPageCounter + tocPageCount + i // Account for ToC pages in page numbering
+              const pageNumber = globalPageCounter + i // Content pages start from 1, ToC pages are not counted
               const resizeResult = this.resizePageToA4(page, pageNumber, pdf.fitToPage)
 
               if (typeof resizeResult === 'object' && resizeResult.fitToPage) {
@@ -1472,8 +1650,8 @@ export default {
             console.log(`Template directory configured: ${templateDir}`)
             // Calculate the absolute page number in the final document (ToC pages + current content page)
             const absoluteStartPage = tocPageCount + (globalPageCounter - 1) // Current PDF starts at this absolute position
-            const totalDocumentPages = totalPages + tocPageCount // Total pages = content + ToC
-            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes, baseDir, pdf.fitToPage)
+            const totalDocumentPages = totalPages // Only count content pages, exclude ToC pages
+            await this.applyTemplateOverlays(finalDoc, copiedPages, finalMergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes, baseDir, pdf.fitToPage)
           } else {
             console.log('No template directory configured, skipping template overlays')
           }
@@ -1492,20 +1670,23 @@ export default {
           globalPageCounter += sourcePages.length
         }
 
-        // Emit progress update after each section with more detailed info
-        const sectionCompleteProgress = 70 + ((mergeList.indexOf(section) + 1) / mergeList.length) * 20 // 70% to 90% range
+        // Emit progress update after each section with more detailed info (skip separator sections)
+        if (!section.isSeparator) {
+          const nonSeparatorIndex = finalMergeList.slice(0, finalMergeList.indexOf(section) + 1).filter(s => !s.isSeparator).length - 1
+          const sectionCompleteProgress = 70 + ((nonSeparatorIndex + 1) / totalNonSeparatorSections) * 20 // 70% to 90% range
 
-        // Calculate section page count asynchronously
-        let sectionPageCount = 0
-        for (const pdf of section.pdfs) {
-          if (fs.existsSync(pdf.path)) {
-            const contentBytes = fs.readFileSync(pdf.path)
-            const doc = await PDFDocument.load(contentBytes)
-            sectionPageCount += doc.getPageCount()
+          // Calculate section page count asynchronously
+          let sectionPageCount = 0
+          for (const pdf of section.pdfs) {
+            if (fs.existsSync(pdf.path)) {
+              const contentBytes = fs.readFileSync(pdf.path)
+              const doc = await PDFDocument.load(contentBytes)
+              sectionPageCount += doc.getPageCount()
+            }
           }
-        }
 
-        bus.$emit('merge-progress', { progress: sectionCompleteProgress, message: `✓ Completed section: ${section.title} (${sectionPageCount} pages)` })
+          bus.$emit('merge-progress', { progress: sectionCompleteProgress, message: `✓ Completed section: ${section.title} (${sectionPageCount} pages)` })
+        }
       }
 
       const mergedBytes = await finalDoc.save()
@@ -1543,6 +1724,11 @@ export default {
 
       // First pass: collect all entries and calculate layout
       for (const section of mergeList) {
+        // Skip separator sections in ToC display, but account for them in page numbering
+        if (section.isSeparator) {
+          continue
+        }
+
         const level = (section.title.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
         const indent = level * 20
 
@@ -1610,9 +1796,21 @@ export default {
           currentPageIndex++
         }
 
+        // Calculate the actual page number accounting for separator pages
+        // Count how many separator pages come before this section
+        let separatorPagesBefore = 0
+        for (let i = 0; i < mergeList.indexOf(section); i++) {
+          if (mergeList[i].isSeparator) {
+            separatorPagesBefore++
+          }
+        }
+
+        const actualPageNumber = pageNumber + separatorPagesBefore
+        console.log(`Section "${section.title}": base page ${pageNumber}, separator pages before: ${separatorPagesBefore}, actual page: ${actualPageNumber}`)
+
         tocEntries.push({
           title: section.title,
-          pageNumber: pageNumber,
+          pageNumber: actualPageNumber,
           level: level,
           indent: indent,
           tocPageIndex: tocPages.length - 1, // Use actual array length - 1
@@ -1714,7 +1912,8 @@ export default {
 
         // Try to create clickable link annotation
         try {
-          // Links point to content pages (ToC pages + content page number)
+          // Links point to content pages (ToC pages + content page number - 1)
+          // ToC pages are not counted in page numbering, so content starts after ToC
           const targetPageNumber = tocPages.length + entry.pageNumber - 1
           const linkAnnotation = finalDoc.context.obj({
             Type: 'Annot',
@@ -2345,6 +2544,11 @@ export default {
       for (let i = 0; i < mergeList.length; i++) {
         const section = mergeList[i]
 
+        // Skip separator sections
+        if (section.isSeparator) {
+          continue
+        }
+
         // Count pages in this section
         let sectionPageCount = 0
         for (const pdf of section.pdfs) {
@@ -2382,6 +2586,12 @@ export default {
 
         for (let i = foundSectionIndex + 1; i < mergeList.length; i++) {
           const section = mergeList[i]
+
+          // Skip separator sections
+          if (section.isSeparator) {
+            continue
+          }
+
           const sectionTitle = section.title || 'Untitled Section'
           const sectionLevel = (sectionTitle.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
 
