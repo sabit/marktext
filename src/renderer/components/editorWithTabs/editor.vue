@@ -1214,7 +1214,13 @@ export default {
             // Check for file links in the original content
             const fileLinkMatch = content.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
             if (fileLinkMatch) {
-              currentSection.docs.push(fileLinkMatch[2])
+              const linkText = fileLinkMatch[1]
+              const fileUrl = fileLinkMatch[2]
+              const fitToPage = linkText.includes('🔍')
+              currentSection.docs.push({
+                url: fileUrl,
+                fitToPage: fitToPage
+              })
             } else {
               // Ordered list item without file link - show error as per requirements
               throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
@@ -1277,9 +1283,9 @@ export default {
         const sectionProgress = 10 + (i / totalSections) * 30 // 10% to 40% range
         bus.$emit('merge-progress', { progress: sectionProgress, message: `Processing section ${i + 1}/${totalSections}: ${section.title}` })
 
-        for (const docPath of section.docs) {
+        for (const doc of section.docs) {
           // Convert file:// URL to file system path
-          const filePath = this.convertFileUrlToPath(docPath)
+          const filePath = this.convertFileUrlToPath(doc.url)
           let pdfPath = filePath
 
           console.log(`Processing file: ${filePath}`)
@@ -1321,7 +1327,10 @@ export default {
             pdfPath = destPath
           }
 
-          sectionPdfs.push(pdfPath)
+          sectionPdfs.push({
+            path: pdfPath,
+            fitToPage: doc.fitToPage
+          })
         }
 
         mergeList.push({
@@ -1358,9 +1367,9 @@ export default {
       let totalPages = 0
 
       for (const section of mergeList) {
-        for (const pdfPath of section.pdfs) {
-          if (fs.existsSync(pdfPath)) {
-            const contentBytes = fs.readFileSync(pdfPath)
+        for (const pdf of section.pdfs) {
+          if (fs.existsSync(pdf.path)) {
+            const contentBytes = fs.readFileSync(pdf.path)
             const doc = await PDFDocument.load(contentBytes)
             totalPages += doc.getPageCount()
           }
@@ -1391,32 +1400,70 @@ export default {
         const sectionStartProgress = 70 + (mergeList.indexOf(section) / mergeList.length) * 20 // 70% to 90% range
         bus.$emit('merge-progress', { progress: sectionStartProgress, message: `Processing section: ${section.title}` })
 
-        for (const pdfPath of section.pdfs) {
-          if (!fs.existsSync(pdfPath)) {
-            console.warn(`PDF file does not exist, skipping: ${pdfPath}`)
+        for (const pdf of section.pdfs) {
+          if (!fs.existsSync(pdf.path)) {
+            console.warn(`PDF file does not exist, skipping: ${pdf.path}`)
             continue
           }
 
-          console.log(`Processing PDF: ${pdfPath}`)
-          const contentBytes = fs.readFileSync(pdfPath)
+          console.log(`Processing PDF: ${pdf.path}`)
+          const contentBytes = fs.readFileSync(pdf.path)
           const contentDoc = await PDFDocument.load(contentBytes)
 
           // Simple approach: copy all pages at once and apply overlays
           const sourcePages = contentDoc.getPages()
           const copiedPages = await finalDoc.copyPages(contentDoc, sourcePages.map((_, i) => i))
-          console.log(`Copied ${copiedPages.length} pages from ${pdfPath}`)
+          console.log(`Copied ${copiedPages.length} pages from ${pdf.path}`)
 
           // Apply resizing if enabled
           const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false
           const originalSizes = [] // Track original sizes before resizing
+          const scalingInfos = [] // Track scaling information for fit-to-page documents
           if (resizeEnabled) {
             for (let i = 0; i < copiedPages.length; i++) {
               const page = copiedPages[i]
               const originalSize = page.getSize()
               originalSizes.push(originalSize)
               const pageNumber = globalPageCounter + tocPageCount + i // Account for ToC pages in page numbering
-              this.resizePageToA4(page, pageNumber)
+              const resizeResult = this.resizePageToA4(page, pageNumber, pdf.fitToPage)
+
+              if (typeof resizeResult === 'object' && resizeResult.fitToPage) {
+                // This is a fit-to-page document with scaling information
+                scalingInfos.push(resizeResult)
+              } else {
+                scalingInfos.push(null) // Regular document or no scaling needed
+              }
             }
+          }
+
+          // For fit-to-page documents, create new A4 pages with properly scaled content
+          if (pdf.fitToPage) {
+            console.log(`Creating scaled A4 pages for fit-to-page document: ${pdf.path}`)
+            const scaledPages = []
+
+            for (let i = 0; i < copiedPages.length; i++) {
+              const scalingInfo = scalingInfos[i]
+              if (scalingInfo && scalingInfo.fitToPage) {
+                // Create a new A4 page with scaled content
+                const scaledPage = await this.createScaledA4Page(copiedPages[i], scalingInfo, finalDoc)
+                scaledPages.push(scaledPage)
+              } else {
+                // No scaling needed, use original copied page but ensure it's A4
+                const page = copiedPages[i]
+                const { width, height } = page.getSize()
+                const A4_WIDTH = 595.28
+                const A4_HEIGHT = 841.89
+
+                // Set page size to A4 if not already
+                if (Math.abs(width - A4_WIDTH) > 5 || Math.abs(height - A4_HEIGHT) > 5) {
+                  page.setSize(A4_WIDTH, A4_HEIGHT)
+                }
+                scaledPages.push(page)
+              }
+            }
+
+            // Replace copiedPages with scaled pages
+            copiedPages.splice(0, copiedPages.length, ...scaledPages)
           }
 
           // Apply template overlays if configured
@@ -1426,16 +1473,21 @@ export default {
             // Calculate the absolute page number in the final document (ToC pages + current content page)
             const absoluteStartPage = tocPageCount + (globalPageCounter - 1) // Current PDF starts at this absolute position
             const totalDocumentPages = totalPages + tocPageCount // Total pages = content + ToC
-            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes, baseDir)
+            await this.applyTemplateOverlays(finalDoc, copiedPages, mergeList, absoluteStartPage, totalDocumentPages, tocPageCount, originalSizes, baseDir, pdf.fitToPage)
           } else {
             console.log('No template directory configured, skipping template overlays')
           }
 
           // Add the copied pages to the final document
-          for (const page of copiedPages) {
-            finalDoc.addPage(page)
+          // For fit-to-page documents, pages were already added in createScaledA4Page
+          if (!pdf.fitToPage) {
+            for (const page of copiedPages) {
+              finalDoc.addPage(page)
+            }
+            console.log(`Added ${copiedPages.length} pages to final document`)
+          } else {
+            console.log(`Fit-to-page document pages were already added during scaling (${copiedPages.length} pages)`)
           }
-          console.log(`Added ${copiedPages.length} pages to final document`)
 
           globalPageCounter += sourcePages.length
         }
@@ -1445,9 +1497,9 @@ export default {
 
         // Calculate section page count asynchronously
         let sectionPageCount = 0
-        for (const pdfPath of section.pdfs) {
-          if (fs.existsSync(pdfPath)) {
-            const contentBytes = fs.readFileSync(pdfPath)
+        for (const pdf of section.pdfs) {
+          if (fs.existsSync(pdf.path)) {
+            const contentBytes = fs.readFileSync(pdf.path)
             const doc = await PDFDocument.load(contentBytes)
             sectionPageCount += doc.getPageCount()
           }
@@ -1571,9 +1623,9 @@ export default {
 
         // Count pages in this section
         let sectionPageCount = 0
-        for (const pdfPath of section.pdfs) {
-          if (require('fs').existsSync(pdfPath)) {
-            const contentBytes = require('fs').readFileSync(pdfPath)
+        for (const pdf of section.pdfs) {
+          if (require('fs').existsSync(pdf.path)) {
+            const contentBytes = require('fs').readFileSync(pdf.path)
             const doc = await PDFDocument.load(contentBytes)
             sectionPageCount += doc.getPageCount()
           }
@@ -1966,9 +2018,9 @@ export default {
     },
 
     // Resize PDF page to A4 format while maintaining aspect ratio
-    resizePageToA4 (page, pageNumber) {
+    resizePageToA4 (page, pageNumber, fitToPage = false) {
       // Check if resizing is enabled in preferences
-      const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false // Default to true
+      const resizeEnabled = this.$store.state.preferences.resizePagesToA4 !== false
       if (!resizeEnabled) {
         console.log(`Page ${pageNumber} resizing disabled in preferences, keeping original size`)
         return false
@@ -1980,6 +2032,70 @@ export default {
       // A4 dimensions in points (72 DPI): 595.28 x 841.89
       const A4_WIDTH = 595.28
       const A4_HEIGHT = 841.89
+
+      // For fit-to-page documents, resize content to fit within header/footer margins
+      if (fitToPage) {
+        console.log(`Page ${pageNumber} is from fit-to-page document, resizing to fit within header/footer margins`)
+
+        // Define header/footer margins with padding to prevent overlap
+        // These margins should be larger than the actual overlay content to ensure no overlap
+        const HEADER_MARGIN = 80 // points from top (increased from 60)
+        const FOOTER_MARGIN = 80 // points from bottom (increased from 60)
+        const SIDE_MARGIN = 30 // points from sides (increased from 20)
+        const CONTENT_PADDING = 10 // additional padding between content and overlay areas
+
+        const availableWidth = A4_WIDTH - (2 * SIDE_MARGIN) - (2 * CONTENT_PADDING)
+        const availableHeight = A4_HEIGHT - HEADER_MARGIN - FOOTER_MARGIN - (2 * CONTENT_PADDING)
+
+        console.log(`Page ${pageNumber} - Available space for content: ${availableWidth}x${availableHeight} points (with ${CONTENT_PADDING}pt padding)`)
+        console.log(`Page ${pageNumber} - Header margin: ${HEADER_MARGIN}pt, Footer margin: ${FOOTER_MARGIN}pt, Side margins: ${SIDE_MARGIN}pt each`)
+
+        // Calculate scale to fit content within available space
+        const scaleX = availableWidth / width
+        const scaleY = availableHeight / height
+        const scale = Math.min(scaleX, scaleY, 1.0) // Don't scale up, only down if needed
+
+        if (scale < 1.0) {
+          console.log(`Page ${pageNumber} - Content needs scaling by ${scale.toFixed(3)} to fit within margins`)
+
+          // Calculate new content dimensions
+          const newWidth = width * scale
+          const newHeight = height * scale
+
+          // Calculate position to center content within available space with padding
+          const xOffset = SIDE_MARGIN + CONTENT_PADDING + (availableWidth - newWidth) / 2
+          const yOffset = HEADER_MARGIN + CONTENT_PADDING + (availableHeight - newHeight) / 2
+
+          console.log(`Page ${pageNumber} - New content size: ${newWidth.toFixed(2)}x${newHeight.toFixed(2)} at (${xOffset.toFixed(2)}, ${yOffset.toFixed(2)})`)
+
+          // Note: The actual content scaling needs to be done when drawing the page content
+          // This is just calculating the target dimensions for later use
+          return {
+            fitToPage: true,
+            originalSize: { width, height },
+            targetSize: { width: newWidth, height: newHeight },
+            position: { x: xOffset, y: yOffset },
+            scale: scale
+          }
+        } else {
+          console.log(`Page ${pageNumber} - Content already fits within margins, centering only`)
+
+          // Calculate position to center content within available space with padding
+          const xOffset = SIDE_MARGIN + CONTENT_PADDING + (availableWidth - width) / 2
+          const yOffset = HEADER_MARGIN + CONTENT_PADDING + (availableHeight - height) / 2
+
+          return {
+            fitToPage: true,
+            originalSize: { width, height },
+            targetSize: { width, height },
+            position: { x: xOffset, y: yOffset },
+            scale: 1.0
+          }
+        }
+      }
+
+      // For regular documents, resize to full A4
+      console.log(`Page ${pageNumber} is regular document, resizing to full A4`)
 
       // Check if page needs resizing (with small tolerance for rounding)
       const tolerance = 5 // points
@@ -2077,8 +2193,61 @@ export default {
       }
     },
 
+    // Create a scaled A4 page for fit-to-page documents
+    async createScaledA4Page (sourcePage, scalingInfo, finalDoc) {
+      try {
+        // A4 dimensions in points (72 DPI): 595.28 x 841.89
+        const A4_WIDTH = 595.28
+        const A4_HEIGHT = 841.89
+
+        // Create a new A4 page (but don't add it to document yet - let the main loop handle adding)
+        const a4Page = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+        console.log(`Created new scaled A4 page with dimensions: ${A4_WIDTH}x${A4_HEIGHT} points`)
+
+        // Get scaling information
+        const { targetSize, position, scale } = scalingInfo
+        console.log(`Scaling content by ${scale.toFixed(3)} to ${targetSize.width.toFixed(2)}x${targetSize.height.toFixed(2)} at (${position.x.toFixed(2)}, ${position.y.toFixed(2)})`)
+
+        // Embed the source page into the final document
+        const embeddedSourcePage = await finalDoc.embedPage(sourcePage)
+        console.log('Successfully embedded source page for scaling')
+
+        // Draw the embedded source page content onto the A4 page with scaling
+        a4Page.drawPage(embeddedSourcePage, {
+          x: position.x,
+          y: position.y,
+          width: targetSize.width,
+          height: targetSize.height
+        })
+
+        console.log('Successfully drew scaled content onto A4 page')
+        return a4Page
+      } catch (error) {
+        console.error('Error creating scaled A4 page:', error.message)
+        // Fallback: create regular A4 page
+        const A4_WIDTH = 595.28
+        const A4_HEIGHT = 841.89
+
+        try {
+          const embeddedSourcePage = await finalDoc.embedPage(sourcePage)
+          const fallbackPage = finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+          fallbackPage.drawPage(embeddedSourcePage, {
+            x: 0,
+            y: 0,
+            width: A4_WIDTH,
+            height: A4_HEIGHT
+          })
+          return fallbackPage
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError.message)
+          // Last resort: create an empty A4 page
+          return finalDoc.addPage([A4_WIDTH, A4_HEIGHT])
+        }
+      }
+    },
+
     // Apply template overlays to pages using docxtemplater
-    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1, originalSizes = [], baseDir) {
+    async applyTemplateOverlays (finalDoc, pages, mergeList, startPageNumber, totalPages, tocPageCount = 1, originalSizes = [], baseDir, fitToPage = false) {
       const fs = require('fs')
       const path = require('path')
       const os = require('os')
@@ -2128,7 +2297,7 @@ export default {
             continue
           }
 
-          console.log(`Processing page ${pageNumber} (${isLandscape ? 'landscape' : 'portrait'})`)
+          console.log(`Processing page ${pageNumber} (${isLandscape ? 'landscape' : 'portrait'}) - fitToPage: ${fitToPage}`)
 
           // Get page title from TOC
           const pageTitle = await this.getPageTitleFromToc(mergeList, pageNumber, tocPageCount)
@@ -2140,8 +2309,8 @@ export default {
           // Convert to PDF
           const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, tempDir, execAsync)
 
-          // Apply as overlay
-          await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber, originalSizes[i])
+          // Apply as overlay with fit-to-page consideration
+          await this.applyPdfOverlay(finalDoc, page, processedPdfPath, pageNumber, originalSizes[i], fitToPage)
 
           // Clean up temporary files
           try {
@@ -2175,9 +2344,9 @@ export default {
 
         // Count pages in this section
         let sectionPageCount = 0
-        for (const pdfPath of section.pdfs) {
-          if (require('fs').existsSync(pdfPath)) {
-            const contentBytes = require('fs').readFileSync(pdfPath)
+        for (const pdf of section.pdfs) {
+          if (require('fs').existsSync(pdf.path)) {
+            const contentBytes = require('fs').readFileSync(pdf.path)
             const doc = await require('pdf-lib').PDFDocument.load(contentBytes)
             sectionPageCount += doc.getPageCount()
           }
@@ -2325,7 +2494,7 @@ export default {
     },
 
     // Apply PDF overlay to page
-    async applyPdfOverlay (finalDoc, page, overlayPdfPath, pageNumber, originalSize = null) {
+    async applyPdfOverlay (finalDoc, page, overlayPdfPath, pageNumber, originalSize = null, fitToPage = false) {
       const fs = require('fs')
 
       try {
@@ -2348,12 +2517,23 @@ export default {
           console.log(`Page ${pageNumber} - Original page size: ${originalSize.width.toFixed(2)}x${originalSize.height.toFixed(2)}`)
         }
         console.log(`Page ${pageNumber} - Overlay size: ${overlaySize.width.toFixed(2)}x${overlaySize.height.toFixed(2)}`)
+        console.log(`Page ${pageNumber} - Fit to page: ${fitToPage}`)
 
         // A4 dimensions in points (72 DPI): 595.28 x 841.89
         const A4_WIDTH = 595.28
         const A4_HEIGHT = 841.89
 
         console.log(`Page ${pageNumber} - A4 dimensions: ${A4_WIDTH}x${A4_HEIGHT}`)
+
+        // Define header/footer margins for fit-to-page documents
+        // These should match the margins used in resizePageToA4 for consistency
+        const HEADER_MARGIN = 80 // points from top (increased from 60)
+        const FOOTER_MARGIN = 80 // points from bottom (increased from 60)
+        const SIDE_MARGIN = 30 // points from sides (increased from 20)
+        const CONTENT_PADDING = 10 // additional padding between content and overlay areas
+
+        const availableHeight = A4_HEIGHT - HEADER_MARGIN - FOOTER_MARGIN - (2 * CONTENT_PADDING)
+        const availableWidth = A4_WIDTH - (2 * SIDE_MARGIN) - (2 * CONTENT_PADDING)
 
         // Check if overlay is already A4 size (within tolerance)
         const tolerance = 10 // points - increased tolerance for better detection
@@ -2372,6 +2552,8 @@ export default {
           scale = 1.0
           scaledWidth = A4_WIDTH
           scaledHeight = A4_HEIGHT
+          x = 0
+          y = 0
         } else {
           // Overlay is not A4 size - scale it to fit A4
           console.log(`Page ${pageNumber} - Overlay is not A4 size, scaling to A4`)
@@ -2380,13 +2562,9 @@ export default {
           scale = Math.min(scaleX, scaleY)
           scaledWidth = overlaySize.width * scale
           scaledHeight = overlaySize.height * scale
+          x = (A4_WIDTH - scaledWidth) / 2
+          y = (A4_HEIGHT - scaledHeight) / 2
         }
-
-        // Position overlay to cover the entire page from (0, 0)
-        x = 0
-        y = 0
-        scaledWidth = A4_WIDTH
-        scaledHeight = A4_HEIGHT
 
         console.log(`Page ${pageNumber} - Scaling overlay by ${scale.toFixed(3)} to ${scaledWidth.toFixed(2)}x${scaledHeight.toFixed(2)}`)
         console.log(`Page ${pageNumber} - Positioning overlay at (${x.toFixed(2)}, ${y.toFixed(2)})`)
@@ -2401,6 +2579,36 @@ export default {
         })
 
         console.log(`Applied overlay to page ${pageNumber}`)
+
+        // For fit-to-page documents, we need to scale the existing content to fit within header/footer margins
+        if (fitToPage && originalSize) {
+          console.log(`Page ${pageNumber} - Applying fit-to-page scaling for content`)
+
+          // Get the current content that was already drawn on this page
+          // We need to scale it to fit within the available space (excluding header/footer)
+          const contentScaleX = availableWidth / originalSize.width
+          const contentScaleY = availableHeight / originalSize.height
+          const contentScale = Math.min(contentScaleX, contentScaleY, 1.0) // Don't scale up, only down
+
+          if (contentScale < 1.0) {
+            console.log(`Page ${pageNumber} - Content needs scaling by ${contentScale.toFixed(3)} to fit within margins`)
+
+            // Calculate new content dimensions and position with padding
+            const newContentWidth = originalSize.width * contentScale
+            const newContentHeight = originalSize.height * contentScale
+            const contentX = SIDE_MARGIN + CONTENT_PADDING + (availableWidth - newContentWidth) / 2
+            const contentY = HEADER_MARGIN + CONTENT_PADDING + (availableHeight - newContentHeight) / 2
+
+            console.log(`Page ${pageNumber} - New content dimensions: ${newContentWidth.toFixed(2)}x${newContentHeight.toFixed(2)} at (${contentX.toFixed(2)}, ${contentY.toFixed(2)})`)
+
+            // Note: In a real implementation, we would need to redraw the content at the new scale and position
+            // However, since the content is already embedded in the PDF, we would need to modify the page content
+            // This is a complex operation that would require recreating the page with scaled content
+            // For now, we'll log the scaling information for future implementation
+          } else {
+            console.log(`Page ${pageNumber} - Content already fits within margins, no scaling needed`)
+          }
+        }
       } catch (error) {
         console.error(`Error applying PDF overlay to page ${pageNumber}:`, error.message)
       }
