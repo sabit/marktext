@@ -2299,12 +2299,12 @@ export default {
 
           console.log(`Processing page ${pageNumber} (${isLandscape ? 'landscape' : 'portrait'}) - fitToPage: ${fitToPage}`)
 
-          // Get page title from TOC
-          const pageTitle = await this.getPageTitleFromToc(mergeList, pageNumber, tocPageCount)
+          // Get page title and sub-sections from TOC
+          const pageInfo = await this.getPageTitleFromToc(mergeList, pageNumber, tocPageCount)
 
           // Process template with docxtemplater
           const displayPageNumber = pageNumber - tocPageCount + 1 // Convert absolute position to display page number
-          const processedDocxPath = await this.processDocxTemplate(templatePath, pageTitle, displayPageNumber, totalPages - tocPageCount, tempDir)
+          const processedDocxPath = await this.processDocxTemplate(templatePath, pageInfo.title, displayPageNumber, totalPages - tocPageCount, tempDir, pageInfo.subSections)
 
           // Convert to PDF
           const processedPdfPath = await this.convertDocxToPdf(processedDocxPath, tempDir, execAsync)
@@ -2328,19 +2328,22 @@ export default {
       }
     },
 
-    // Get page title from TOC based on page number (handles multi-page ToC)
+    // Get page title and sub-sections from TOC based on page number (handles multi-page ToC)
     async getPageTitleFromToc (mergeList, pageNumber, tocPageCount = 1) {
       // Adjust page number to account for ToC pages
       const adjustedPageNumber = pageNumber - tocPageCount
 
       if (adjustedPageNumber < 0) {
-        return 'Table of Contents'
+        return { title: 'Table of Contents', subSections: '' }
       }
 
       let currentPage = 0 // Content sections start from page 0
+      let foundSection = null
+      let foundSectionIndex = -1
 
-      for (const section of mergeList) {
-        const sectionTitle = section.title || 'Untitled Section'
+      // First pass: find which section contains the target page
+      for (let i = 0; i < mergeList.length; i++) {
+        const section = mergeList[i]
 
         // Count pages in this section
         let sectionPageCount = 0
@@ -2354,17 +2357,63 @@ export default {
 
         // Check if the target page is in this section
         if (adjustedPageNumber >= currentPage && adjustedPageNumber < currentPage + sectionPageCount) {
-          return sectionTitle
+          foundSection = section
+          foundSectionIndex = i
+          break
         }
 
         currentPage += sectionPageCount
       }
 
-      return 'Document'
+      if (!foundSection) {
+        return { title: 'Document', subSections: '' }
+      }
+
+      // Second pass: collect sub-sections of the found section
+      const foundSectionTitle = foundSection.title || 'Untitled Section'
+      const foundSectionLevel = (foundSectionTitle.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
+      const subSections = []
+
+      // Look for sub-sections (sections with higher level numbers that start with the same base)
+      const basePattern = foundSectionTitle.match(/^(\d+(?:\.\d+)*)/)
+      if (basePattern) {
+        const baseNumber = basePattern[1]
+        const expectedSubLevel = foundSectionLevel + 1
+
+        for (let i = foundSectionIndex + 1; i < mergeList.length; i++) {
+          const section = mergeList[i]
+          const sectionTitle = section.title || 'Untitled Section'
+          const sectionLevel = (sectionTitle.match(/^\d+(\.\d+)*/) || [''])[0].split('.').length - 1
+
+          // Check if this is a sub-section of the found section
+          if (sectionLevel === expectedSubLevel) {
+            const subPattern = new RegExp(`^${baseNumber}\\.\\d+`)
+            if (subPattern.test(sectionTitle)) {
+              // Remove the parent numbering to get just the sub-section title
+              const subTitle = sectionTitle.replace(new RegExp(`^${baseNumber}\\.`), '')
+              subSections.push(subTitle)
+            } else {
+              // We've moved past the sub-sections of this parent
+              break
+            }
+          } else if (sectionLevel <= foundSectionLevel) {
+            // We've moved to a different parent section
+            break
+          }
+        }
+      }
+
+      // Format sub-sections as a comma-separated string
+      const subSectionsString = subSections.length > 0 ? subSections.join(', ') : ''
+
+      return {
+        title: foundSectionTitle,
+        subSections: subSectionsString
+      }
     },
 
     // Process DOCX template with docxtemplater
-    async processDocxTemplate (templatePath, pageTitle, pageNumber, totalPages, tempDir) {
+    async processDocxTemplate (templatePath, pageTitle, pageNumber, totalPages, tempDir, subSections = '') {
       const fs = require('fs')
       const path = require('path')
       const PizZip = require('pizzip')
@@ -2380,7 +2429,8 @@ export default {
         doc.setData({
           page_title: pageTitle,
           page_number: pageNumber,
-          page_total: totalPages
+          page_total: totalPages,
+          sub_sections: subSections
         })
 
         // Render document
