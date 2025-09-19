@@ -1058,75 +1058,68 @@ export default {
           title: 'Document Not Saved',
           type: 'warning',
           message: 'Please save the document before merging.',
-          time: 0 // Don't auto-hide
+          time: 0
         })
         return
       }
-
-      // Emit merge started event
       bus.$emit('merge-started')
-
-      // Put document into readonly mode
-      console.log('Setting editor to readonly mode')
-      if (this.editor) {
-        this.editor.setOptions({ readOnly: true })
-        console.log('Editor set to readonly mode successfully')
-      } else {
-        console.warn('Editor is null, cannot set readonly mode')
-      }
-
+      if (this.editor) this.editor.setOptions({ readOnly: true })
+      const DocumentCache = require('../../utils/DocumentCache')
+      const ProgressManager = require('../../utils/ProgressManager')
+      const { processSections } = require('../../utils/mergeHelpers')
       try {
-        // Get markdown content
-        if (!this.editor) {
-          throw new Error('Editor is not available')
-        }
+        if (!this.editor) throw new Error('Editor is not available')
         const markdown = this.editor.getMarkdown()
-
-        // Parse ordered lists and extract file links
         const sections = this.parseDocumentSections(markdown)
-
-        if (sections.length === 0) {
-          throw new Error('No ordered lists with file links found in the document. Make sure your document contains ordered lists with file:// links.')
-        }
-
-        // Debug output as per requirements
-        console.log('Parsed sections:', sections)
-
-        // Emit progress update after parsing
+        if (sections.length === 0) throw new Error('No ordered lists with file links found in the document. Make sure your document contains ordered lists with file:// links.')
         bus.$emit('merge-progress', { progress: 10, message: 'Document sections parsed' })
-
-        // Convert and merge documents
-        const mergedPdfPath = await this.convertAndMergeDocuments(sections, currentFile.pathname)
-
-        // Show success message
+        // Setup utilities
+        const cache = new DocumentCache()
+        const progressManager = new ProgressManager()
+        // Get conversion tools from preferences
+  // conversionTools now handled in tools object for mergeHelpers
+        // Prepare tools object for mergeHelpers
+        const tools = {
+          findConversionTool: this.findConversionTool.bind(this),
+          convertToPdf: this.convertToPdf.bind(this),
+          conversionTools: this.$store.state.preferences.conversionTools || [],
+          convertFileUrlToPath: this.convertFileUrlToPath.bind(this)
+        }
+        // Use processSections to build mergeList
+        const basePath = currentFile.pathname
+        const path = require('path')
+        const baseDir = path.dirname(basePath)
+        const outputDir = path.join(baseDir, 'cache')
+        if (!require('fs').existsSync(outputDir)) {
+          require('fs').mkdirSync(outputDir, { recursive: true })
+        }
+        const mergeList = await processSections(
+          sections,
+          tools,
+          outputDir,
+          cache,
+          progressManager,
+          bus
+        )
+        // Merge all PDFs with header/footer overlay
+        const templateDirectory = this.$store.state.preferences.templateDirectory || ''
+        const mergedPdfPath = await this.mergeWithTemplates(mergeList, baseDir, templateDirectory)
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
           showConfirm: true,
-          time: 0 // Don't auto-hide success messages
+          time: 0
         })
-
-        // Open the merged PDF
-        // shell.openPath(mergedPdfPath)
       } catch (error) {
         console.error('Document merge failed:', error)
         notice.notify({
           title: 'Document merge failed',
           type: 'error',
           message: error.message || 'An unexpected error occurred during document merge.',
-          time: 0 // Don't auto-hide error messages
+          time: 0
         })
       } finally {
-        // Restore readonly mode
-        console.log('Restoring editor readonly mode')
-        if (this.editor) {
-          this.editor.setOptions({ readOnly: false })
-          console.log('Editor readonly mode restored successfully')
-        } else {
-          console.warn('Editor is null, cannot restore readonly mode')
-        }
-
-        // Emit merge completed event
+        if (this.editor) this.editor.setOptions({ readOnly: false })
         bus.$emit('merge-completed')
       }
     },
@@ -1252,107 +1245,8 @@ export default {
       return sections
     },
 
-    async convertAndMergeDocuments (sections, basePath) {
-      const path = require('path')
-      const fs = require('fs')
-      const { exec } = require('child_process')
-      const { promisify } = require('util')
-      const execAsync = promisify(exec)
-
-      const baseDir = path.dirname(basePath)
-      const cacheDir = path.join(baseDir, 'cache')
-      const outputDir = cacheDir
-
-      // Create cache directory if it doesn't exist
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true })
-      }
-
-      // Get conversion tools from preferences
-      const conversionTools = this.$store.state.preferences.conversionTools || []
-
-      // Process each section
-      const mergeList = []
-      const totalSections = sections.length
-
-      for (let i = 0; i < sections.length; i++) {
-        const section = sections[i]
-        const sectionPdfs = []
-
-        // Emit progress update for section processing
-        const sectionProgress = 10 + (i / totalSections) * 30 // 10% to 40% range
-        bus.$emit('merge-progress', { progress: sectionProgress, message: `Processing section ${i + 1}/${totalSections}: ${section.title}` })
-
-        for (const doc of section.docs) {
-          // Convert file:// URL to file system path
-          const filePath = this.convertFileUrlToPath(doc.url)
-          let pdfPath = filePath
-
-          console.log(`Processing file: ${filePath}`)
-
-          // If not already a PDF, convert it
-          if (!filePath.toLowerCase().endsWith('.pdf')) {
-            console.log(`File is not PDF, attempting conversion: ${filePath}`)
-            const tool = this.findConversionTool(filePath, conversionTools)
-
-            if (!tool) {
-              console.error(`No conversion tool found for file: ${filePath}`)
-              console.log('Available conversion tools:', conversionTools)
-              throw new Error(`No conversion tool found for file: ${filePath}`)
-            }
-
-            console.log(`Found conversion tool: ${tool.name} for ${filePath}`)
-            pdfPath = await this.convertToPdf(filePath, tool, outputDir, outputDir, execAsync)
-            console.log(`Converted to PDF: ${pdfPath}`)
-          } else {
-            console.log(`File is already PDF: ${filePath}`)
-            // Copy PDF if it's not in the output directory
-            const fileName = path.basename(filePath, '.pdf') + '.pdf'
-            const destPath = path.join(outputDir, fileName)
-
-            // Check if source file exists
-            if (!fs.existsSync(filePath)) {
-              throw new Error(`Source PDF file does not exist: ${filePath}`)
-            }
-
-            if (filePath !== destPath) {
-              // Check if destination is newer
-              const srcStat = fs.statSync(filePath)
-              const destExists = fs.existsSync(destPath)
-
-              if (!destExists || srcStat.mtime > fs.statSync(destPath).mtime) {
-                fs.copyFileSync(filePath, destPath)
-              }
-            }
-            pdfPath = destPath
-          }
-
-          sectionPdfs.push({
-            path: pdfPath,
-            fitToPage: doc.fitToPage
-          })
-        }
-
-        mergeList.push({
-          title: section.title,
-          pdfs: sectionPdfs
-        })
-      }
-
-      // Debug output as per requirements
-      console.log('Merge list:', mergeList)
-
-      // Emit progress update before merging
-      bus.$emit('merge-progress', { progress: 60, message: 'Merging documents' })
-
-      // Get template directory from preferences
-      const templateDirectory = this.$store.state.preferences.templateDirectory || ''
-
-      // Merge all PDFs with header/footer overlay
-      const mergedPdfPath = await this.mergeWithTemplates(mergeList, baseDir, templateDirectory)
-
-      return mergedPdfPath
-    },
+    // convertAndMergeDocuments is now handled by processSections and mergeWithTemplates
+    // (see handleDocumentMerge)
 
     async mergeWithTemplates (mergeList, baseDir, templateDirectory) {
       const { PDFDocument } = require('pdf-lib')
