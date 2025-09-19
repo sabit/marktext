@@ -2,6 +2,8 @@
 const fs = require('fs')
 const path = require('path')
 const { PDFDocument, rgb } = require('pdf-lib')
+// const Docxtemplater = require('docxtemplater')
+// const PizZip = require('pizzip')
 
 /**
  * Merge PDFs with templates
@@ -10,7 +12,7 @@ const { PDFDocument, rgb } = require('pdf-lib')
  * @param {string} templateDirectory - Directory containing templates
  * @returns {Promise<string>} - Path to the merged PDF
  */
-async function mergeWithTemplates (mergeList, baseDir, templateDirectory) {
+async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools) {
   console.log('mergeWithTemplates called with templateDirectory:', templateDirectory)
 
   const mergedPdfPath = path.join(baseDir, 'merged_document.pdf')
@@ -44,8 +46,11 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory) {
   const finalDoc = await PDFDocument.create()
 
   // Generate Table of Contents (now supports multi-page)
-  const tocPageCount = await generateTableOfContents(mergeList, finalDoc)
-  console.log(`Generated ${tocPageCount} ToC pages`)
+  const tocResult = await generateTableOfContents(mergeList, finalDoc)
+  const tocPageCount = tocResult.pageCount
+  const nestedSections = tocResult.nestedSections
+  console.log(`Generated ${tocPageCount} ToC pages with nested sections`)
+  console.log('Nested sections structure:', JSON.stringify(nestedSections, null, 2))
 
   // Emit progress update after ToC generation
   // Note: bus.$emit calls need to be handled by the component
@@ -64,8 +69,8 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory) {
     // Insert a blank page before each main section
     if (isMainSection) {
       console.log(`Inserting blank page before main section: ${section.title}`)
-      // A4 dimensions in points (72 DPI): 595.28 x 841.89
-      finalDoc.addPage([595.28, 841.89])
+      const blankPage = finalDoc.addPage([595.28, 841.89])
+      drawOverlay(blankPage, section.title, tools, currentPageIndex, totalPages, nestedSections, true)
       currentPageIndex++
     }
 
@@ -86,6 +91,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory) {
 
       // Add the copied pages to the final document
       for (const page of copiedPages) {
+        drawOverlay(page, section.title, tools, currentPageIndex, totalPages, nestedSections, false)
         finalDoc.addPage(page)
       }
 
@@ -100,6 +106,19 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory) {
 
   console.log(`Merged PDF created: ${mergedPdfPath} (Total content pages: ${totalPages})`)
   return mergedPdfPath
+}
+
+function drawOverlay (page, sectionTitle, tools, pageNumber, totalPages, nestedSections, isSeparator = false) {
+  // Placeholder function for drawing header/footer overlays
+  console.log(`Drawing overlay for page ${pageNumber} of ${totalPages}`)
+  console.log('Section title:', sectionTitle)
+  if (isSeparator) {
+    // find the section in nestedSections
+    const section = nestedSections.find(sec => sec.title === sectionTitle)
+    if (section) {
+      console.log('Found nested section:', section.subSections)
+    }
+  }
 }
 
 /**
@@ -149,43 +168,44 @@ async function generateTableOfContents (mergeList, finalDoc) {
       }
     }
 
-    if (isMainSection) {
-      // Main sections have a blank page before their content
-      const pageInfo = {
-        title: section.title,
-        isMain: true,
-        startPage: currentPage, // First page (blank page)
-        contentPage: currentPage + 1, // Content starts after blank page
-        endPage: currentPage + sectionPageCount, // Last content page
-        pageCount: sectionPageCount
-      }
-
-      sectionPageInfo.push(pageInfo)
-
-      // Log the page range for this section
-      console.log(`Page range for ${section.title}: blank=${pageInfo.startPage}, content=${pageInfo.contentPage}-${pageInfo.endPage}`)
-
-      // Move to the next section's starting page
-      currentPage += sectionPageCount + 1 // Content pages + blank page
-    } else {
-      // Subsections don't have blank pages
-      const pageInfo = {
-        title: section.title,
-        isMain: false,
-        startPage: currentPage, // First page (content starts immediately)
-        contentPage: currentPage, // Same as startPage (no blank page)
-        endPage: currentPage + sectionPageCount - 1, // Last content page
-        pageCount: sectionPageCount
-      }
-
-      sectionPageInfo.push(pageInfo)
-
-      // Log the page range for this section
-      console.log(`Page range for ${section.title}: content=${pageInfo.startPage}-${pageInfo.endPage}`)
-
-      // Move to the next section's starting page
-      currentPage += sectionPageCount // Just content pages
+    const pageInfo = {
+      title: section.title,
+      isMain: isMainSection,
+      startPage: currentPage,
+      contentPage: isMainSection ? currentPage + 1 : currentPage,
+      endPage: currentPage + sectionPageCount - (isMainSection ? 0 : 1),
+      pageCount: sectionPageCount
     }
+
+    sectionPageInfo.push(pageInfo)
+
+    // Process subsections
+    if (section.subSections) {
+      for (const subSection of section.subSections) {
+        let subSectionPageCount = 0
+        for (const pdf of subSection.pdfs) {
+          if (fs.existsSync(pdf.path)) {
+            const contentBytes = fs.readFileSync(pdf.path)
+            const doc = await PDFDocument.load(contentBytes)
+            subSectionPageCount += doc.getPageCount()
+          }
+        }
+
+        const subPageInfo = {
+          title: subSection.title,
+          isMain: false,
+          startPage: currentPage,
+          contentPage: currentPage,
+          endPage: currentPage + subSectionPageCount - 1,
+          pageCount: subSectionPageCount
+        }
+
+        sectionPageInfo.push(subPageInfo)
+        currentPage += subSectionPageCount
+      }
+    }
+
+    currentPage += sectionPageCount + (isMainSection ? 1 : 0)
   }
 
   // Print comprehensive page info for verification
@@ -409,9 +429,39 @@ async function generateTableOfContents (mergeList, finalDoc) {
     }
   }
 
-  // All entries should now have valid page indices
-  console.log(`Generated ${tocPages.length} ToC pages with ${tocEntries.length} entries`)
-  return tocPages.length // Return number of ToC pages for page numbering adjustment
+  // Collect nested section structure
+  const nestedSections = mergeList.map((section, index) => {
+    const pageInfo = sectionPageInfo[index]
+    if (!pageInfo.isMain) {
+      return null // Skip non-main sections
+    }
+
+    return {
+      title: section.title,
+      isMain: pageInfo.isMain,
+      startPage: pageInfo.startPage,
+      endPage: pageInfo.endPage,
+      subSections: mergeList
+        .filter(subSection =>
+          subSection.title.startsWith(`${section.title.split('.')[0]}.`) &&
+          subSection.title !== section.title
+        )
+        .map(subSection => {
+          const subPageInfo = sectionPageInfo.find(info => info.title === subSection.title)
+          return {
+            title: subSection.title,
+            startPage: subPageInfo?.startPage,
+            endPage: subPageInfo?.endPage
+          }
+        })
+    }
+  }).filter(Boolean) // Remove null entries
+
+  // Return both page count and nested section structure
+  return {
+    pageCount: tocPages.length,
+    nestedSections
+  }
 }
 
 module.exports = {
