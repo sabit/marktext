@@ -1,9 +1,11 @@
 // Utility functions for PDF document processing
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const { PDFDocument, rgb } = require('pdf-lib')
-// const Docxtemplater = require('docxtemplater')
-// const PizZip = require('pizzip')
+const Docxtemplater = require('docxtemplater')
+const PizZip = require('pizzip')
+const { convertToPdf } = require('./fileConversion')
 
 /**
  * Merge PDFs with templates
@@ -70,10 +72,11 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
     if (isMainSection) {
       console.log(`Inserting blank page before main section: ${section.title}`)
       const blankPage = finalDoc.addPage([595.28, 841.89])
-      drawOverlay(blankPage, section.title, tools, currentPageIndex, totalPages, nestedSections, true)
+      await drawOverlay(blankPage, tools, section.title, currentPageIndex, totalPages, nestedSections, true, templateDirectory)
       currentPageIndex++
     }
 
+    console.log('hai', section.pdfs)
     for (const pdf of section.pdfs) {
       if (!fs.existsSync(pdf.path)) {
         console.warn(`PDF file does not exist, skipping: ${pdf.path}`)
@@ -81,7 +84,8 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
       }
 
       console.log(`Processing PDF: ${pdf.path}`)
-      const contentBytes = fs.readFileSync(pdf.path)
+
+      const contentBytes = fs.readFileSync(path.resolve(pdf.path))
       const contentDoc = await PDFDocument.load(contentBytes)
 
       // Simple approach: copy all pages at once
@@ -90,13 +94,14 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
       console.log(`Copied ${copiedPages.length} pages from ${pdf.path}`)
 
       // Add the copied pages to the final document
-      for (const page of copiedPages) {
-        drawOverlay(page, section.title, tools, currentPageIndex, totalPages, nestedSections, false)
-        finalDoc.addPage(page)
+      for (const copiedPage of copiedPages) {
+        // 1. Add the page to the document first.
+        const addedPage = finalDoc.addPage(copiedPage)
+        // 2. Now draw the overlay on the page that is officially part of the document.
+        await drawOverlay(addedPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
+        currentPageIndex++
       }
 
-      // Keep track of page number for template positioning
-      currentPageIndex += sourcePages.length
       console.log(`Current document now has ${currentPageIndex} pages total (including ToC and blank pages)`)
     }
   }
@@ -108,16 +113,63 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
   return mergedPdfPath
 }
 
-function drawOverlay (page, sectionTitle, tools, pageNumber, totalPages, nestedSections, isSeparator = false) {
+async function drawOverlay (page, tools, sectionTitle, pageNumber, totalPages, nestedSections, isSeparator = false, templateDirectory) {
   // Placeholder function for drawing header/footer overlays
-  console.log(`Drawing overlay for page ${pageNumber} of ${totalPages}`)
-  console.log('Section title:', sectionTitle)
-  if (isSeparator) {
-    // find the section in nestedSections
-    const section = nestedSections.find(sec => sec.title === sectionTitle)
-    if (section) {
-      console.log('Found nested section:', section.subSections)
-    }
+  console.log(`Drawing overlay for page ${pageNumber} of ${totalPages} -- ${sectionTitle} -- Separator: ${isSeparator} -- TemplateDir: ${templateDirectory}`)
+  // implement docxtemplater overlay logic
+  const templatePath = path.join(templateDirectory, isSeparator ? 'separator_template.docx' : 'portrait.docx')
+
+  if (!fs.existsSync(templatePath)) {
+    console.error(`Template file not found, skipping overlay: ${templatePath}`)
+    return
+  }
+
+  const content = fs.readFileSync(templatePath, 'binary')
+  const zip = new PizZip(content)
+  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true })
+  const subSections = isSeparator && nestedSections
+    ? nestedSections.find(sec => sec.title === sectionTitle)?.subSections || []
+    : []
+
+  // Render the document
+  try {
+    // Pass data directly to the render method to avoid using the deprecated setData
+    doc.render({
+      page_number: pageNumber,
+      page_total: totalPages,
+      section_title: sectionTitle,
+      page_title: sectionTitle,
+      sub_sections: subSections
+    })
+  } catch (error) {
+    console.error('Error rendering document:', error)
+    // If rendering fails, we can't create an overlay, so we should exit.
+    return
+  }
+
+  // Get the output document
+  const output = doc.getZip().generate({ type: 'nodebuffer' })
+  const tempDirectory = os.tmpdir()
+  const tempDocxPath = path.join(tempDirectory, `output${pageNumber}.docx`)
+  fs.writeFileSync(tempDocxPath, output)
+
+  const tool = tools.findConversionTool(tempDocxPath, tools.conversionTools)
+  if (!tool) {
+    console.error(`No conversion tool found for .docx, skipping overlay for page ${pageNumber}`)
+    return
+  }
+  await convertToPdf(tempDocxPath, tool, tempDirectory)
+
+  // Now overlay the generated PDF page onto the existing PDF page
+  const overlayPdfPath = path.join(tempDirectory, `output${pageNumber}.pdf`)
+  if (fs.existsSync(overlayPdfPath)) {
+    const overlayBytes = fs.readFileSync(overlayPdfPath)
+    const overlayDoc = await PDFDocument.load(overlayBytes)
+    // Use embedPage which is safer for drawing pages from another document.
+    const [embeddedOverlayPage] = await page.doc.embedPdf(overlayDoc)
+    page.drawPage(embeddedOverlayPage)
+  } else {
+    console.error(`Overlay PDF not found, skipping overlay for page ${pageNumber}: ${overlayPdfPath}`)
   }
 }
 

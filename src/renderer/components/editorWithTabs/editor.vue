@@ -1104,8 +1104,9 @@ export default {
         )
         // Merge all PDFs with header/footer overlay
         const templateDirectory = this.$store.state.preferences.templateDirectory || ''
+        console.log('Merging documents with templates from:', templateDirectory)
         // Use imported mergeWithTemplates from pdfProcessing.js
-        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory)
+        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory, tools)
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,

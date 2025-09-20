@@ -84,13 +84,13 @@ async function convertToPdf (inputPath, tool, outputDir, outDir) {
   // Normalize tool path for command line
   const normalizedToolPath = path.resolve(tool.path).replace(/\\/g, '/')
 
-  console.log(`Converting ${filePath} to ${outputPath}`)
+  // console.log(`Converting ${filePath} to ${outputPath}`)
   console.log(`Using tool: ${tool.name}`)
-  console.log(`Original tool path: ${tool.path}`)
-  console.log(`Normalized tool path: ${normalizedToolPath}`)
-  console.log(`Tool arguments template: ${tool.arguments}`)
-  console.log(`Input file exists: ${fs.existsSync(filePath)}`)
-  console.log(`Output directory exists: ${fs.existsSync(outputDir)}`)
+  // console.log(`Original tool path: ${tool.path}`)
+  // console.log(`Normalized tool path: ${normalizedToolPath}`)
+  // console.log(`Tool arguments template: ${tool.arguments}`)
+  // console.log(`Input file exists: ${fs.existsSync(filePath)}`)
+  // console.log(`Output directory exists: ${fs.existsSync(outputDir)}`)
 
   // Check if output file exists and is newer than input
   if (fs.existsSync(outputPath)) {
@@ -108,10 +108,10 @@ async function convertToPdf (inputPath, tool, outputDir, outDir) {
     }
   }
 
-  console.log(`Normalized input path: ${normalizedFilePath}`)
-  console.log(`Normalized output dir: ${normalizedOutputDir}`)
-  console.log(`Normalized input dir: ${normalizedInputDir}`)
-  console.log(`Normalized tool path: ${normalizedToolPath}`)
+  // console.log(`Normalized input path: ${normalizedFilePath}`)
+  // console.log(`Normalized output dir: ${normalizedOutputDir}`)
+  // console.log(`Normalized input dir: ${normalizedInputDir}`)
+  // console.log(`Normalized tool path: ${normalizedToolPath}`)
 
   // Build command with normalized paths
   let command = tool.arguments
@@ -125,62 +125,20 @@ async function convertToPdf (inputPath, tool, outputDir, outDir) {
 
   const fullCommand = `"${normalizedToolPath}" ${command}`
 
-  console.log(`Command template after replacement: ${command}`)
+  // console.log(`Command template after replacement: ${command}`)
   console.log(`Final command: ${fullCommand}`)
+  // console.log('Executing conversion command...')
+  const result = await execAsync(fullCommand, { maxBuffer: 1024 * 1024 })
+  console.log('Command execution result:', result)
 
-  try {
-    console.log('Executing conversion command...')
-    const result = await execAsync(fullCommand, { maxBuffer: 1024 * 1024 })
-    console.log('Command execution result:', result)
-
-    // Check if output file was actually created
-    if (fs.existsSync(outputPath)) {
-      const stats = fs.statSync(outputPath)
-      console.log(`✅ Output file created successfully: ${outputPath} (${stats.size} bytes)`)
-      return outputPath
-    } else {
-      console.error('❌ Command executed but expected output file was not found')
-      console.log('Expected output path:', outputPath)
-
-      // Check what files were actually created in the output directory
-      const outputDir = path.dirname(outputPath)
-      console.log('Checking output directory:', outputDir)
-
-      if (fs.existsSync(outputDir)) {
-        const files = fs.readdirSync(outputDir)
-        const pdfFiles = files.filter(f => f.toLowerCase().endsWith('.pdf'))
-        console.log('PDF files found in output directory:', pdfFiles)
-
-        // Look for a file with similar name
-        const expectedBaseName = path.basename(outputPath, '.pdf').toLowerCase()
-        const matchingFiles = pdfFiles.filter(f =>
-          f.toLowerCase().includes(expectedBaseName) ||
-          expectedBaseName.includes(f.toLowerCase().replace('.pdf', ''))
-        )
-
-        if (matchingFiles.length > 0) {
-          const actualOutputPath = path.join(outputDir, matchingFiles[0])
-          console.log(`✅ Found matching PDF file: ${actualOutputPath}`)
-          return actualOutputPath
-        }
-      } else {
-        console.error('Output directory does not exist:', outputDir)
-      }
-
-      throw new Error(`Conversion completed but expected output file not found: ${outputPath}`)
-    }
-  } catch (error) {
-    console.error('❌ Conversion command failed:', error.message)
-    console.error('Failed command:', fullCommand)
-    console.error('Tool path used:', normalizedToolPath)
-
-    // Even if command failed, check if a PDF was created
-    if (fs.existsSync(outputPath)) {
-      console.log('⚠️ Output file exists despite command failure - partial success?')
-      return outputPath
-    }
-
-    throw new Error(`Conversion failed for ${filePath}: ${error.message}`)
+  // Check if output file was actually created
+  if (fs.existsSync(outputPath)) {
+    const stats = fs.statSync(outputPath)
+    console.log(`✅ Output file created successfully: ${outputPath} (${stats.size} bytes)`)
+    return outputPath
+  } else {
+    console.error(`❌ Conversion failed, output file not found: ${outputPath}`)
+    throw new Error(`Conversion to PDF failed for ${filePath}`)
   }
 }
 
