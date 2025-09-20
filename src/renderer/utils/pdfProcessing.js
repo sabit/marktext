@@ -92,13 +92,52 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
       const sourcePages = contentDoc.getPages()
       const copiedPages = await finalDoc.copyPages(contentDoc, sourcePages.map((_, i) => i))
       console.log(`Copied ${copiedPages.length} pages from ${pdf.path}`)
-
+      console.log('hai2', pdf)
       // Add the copied pages to the final document
       for (const copiedPage of copiedPages) {
-        // 1. Add the page to the document first.
-        const addedPage = finalDoc.addPage(copiedPage)
-        // 2. Now draw the overlay on the page that is officially part of the document.
-        await drawOverlay(addedPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
+        // Create a new blank A4 page to draw onto. This gives us a clean canvas.
+        const newPage = finalDoc.addPage([595.28, 841.89])
+
+        // Embed the copied page to get a drawable object.
+        const embeddedPage = await finalDoc.embedPage(copiedPage)
+
+        if (pdf.fitToPage) {
+          const { width, height } = copiedPage.getSize()
+          const A4_WIDTH = 595.28
+          const A4_HEIGHT = 841.89
+
+          // Convert 2cm to points for margins
+          const marginInPoints = 2 * (72 / 2.54)
+
+          // Calculate the available width and height within the margins
+          const availableWidth = A4_WIDTH
+          const availableHeight = A4_HEIGHT - (2 * marginInPoints)
+
+          // Calculate the scaling factor
+          const scale = Math.min(availableWidth / width, availableHeight / height)
+
+          // Calculate the dimensions of the page after scaling
+          const scaledWidth = width * scale
+          const scaledHeight = height * scale
+
+          // Calculate the x and y coordinates to center the scaled page
+          const x = (A4_WIDTH - scaledWidth) / 2
+          const y = (A4_HEIGHT - scaledHeight) / 2
+
+          // Draw the embedded page onto the new blank page with scaling and positioning
+          newPage.drawPage(embeddedPage, {
+            x,
+            y,
+            xScale: scale,
+            yScale: scale
+          })
+        } else {
+          // If not fitting, draw the embedded page directly onto the new page without scaling.
+          newPage.drawPage(embeddedPage)
+        }
+
+        // 2. Now draw the overlay on the newly created and drawn-upon page.
+        await drawOverlay(newPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
         currentPageIndex++
       }
 

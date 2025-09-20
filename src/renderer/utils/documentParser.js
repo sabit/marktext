@@ -110,6 +110,9 @@ function parseDocumentSections (markdown) {
           const linkText = fileLinkMatch[1]
           const fileUrl = fileLinkMatch[2]
           const fitToPage = linkText.includes('🔍')
+          if (fitToPage) {
+            console.log(`Found file link: text="${linkText}", url="${fileUrl}", fitToPage=${fitToPage}`)
+          }
           currentSection.docs.push({
             url: fileUrl,
             fitToPage: fitToPage
