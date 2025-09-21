@@ -485,11 +485,11 @@ ipcMain.on('mt::reveal-in-explorer', (e, filePath) => {
         if (fallbackErr) {
           console.error('Fallback method also failed:', fallbackErr)
         } else {
-          console.log('Successfully opened containing folder with fallback method')
+          // console.log('Successfully opened containing folder with fallback method')
         }
       })
     } else {
-      console.log('Successfully opened explorer and selected file:', absPath)
+      // console.log('Successfully opened explorer and selected file:', absPath)
     }
   })
 })

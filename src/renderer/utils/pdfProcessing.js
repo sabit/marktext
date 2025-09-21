@@ -14,8 +14,7 @@ const { convertToPdf } = require('./fileConversion')
  * @param {string} templateDirectory - Directory containing templates
  * @returns {Promise<string>} - Path to the merged PDF
  */
-async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools, options = {}) {
-  const { draftMode = false } = options
+async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools, draftMode, projectTitle) {
   console.log('mergeWithTemplates called with templateDirectory:', templateDirectory)
 
   const mergedPdfPath = path.join(baseDir, 'merged_document.pdf')
@@ -73,7 +72,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
     if (isMainSection) {
       console.log(`Inserting blank page before main section: ${section.title}`)
       const blankPage = finalDoc.addPage([595.28, 841.89])
-      await drawOverlay(blankPage, tools, section.title, currentPageIndex, totalPages, nestedSections, true, templateDirectory)
+      await drawOverlay(blankPage, tools, section.title, currentPageIndex, totalPages, nestedSections, true, templateDirectory, projectTitle)
       currentPageIndex++
     }
 
@@ -139,7 +138,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
 
         // 2. Now draw the overlay on the newly created and drawn-upon page unless draft mode is enabled.
         if (!draftMode) {
-          await drawOverlay(newPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
+          await drawOverlay(newPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory, projectTitle)
         }
         currentPageIndex++
       }
@@ -155,7 +154,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
   return mergedPdfPath
 }
 
-async function drawOverlay (page, tools, sectionTitle, pageNumber, totalPages, nestedSections, isSeparator = false, templateDirectory) {
+async function drawOverlay (page, tools, sectionTitle, pageNumber, totalPages, nestedSections, isSeparator = false, templateDirectory, projectTitle = '') {
   // Placeholder function for drawing header/footer overlays
   console.log(`Drawing overlay for page ${pageNumber} of ${totalPages} -- ${sectionTitle} -- Separator: ${isSeparator} -- TemplateDir: ${templateDirectory}`)
   // implement docxtemplater overlay logic
@@ -181,7 +180,8 @@ async function drawOverlay (page, tools, sectionTitle, pageNumber, totalPages, n
       page_total: totalPages,
       section_title: sectionTitle,
       page_title: sectionTitle,
-      sub_sections: subSections
+      sub_sections: subSections,
+      project_title: projectTitle
     })
   } catch (error) {
     console.error('Error rendering document:', error)

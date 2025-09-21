@@ -11,16 +11,23 @@ function parseDocumentSections (markdown) {
   let currentSection = null
   let inOrderedList = false
   let levelCounters = [0] // Counters for each nesting level
+  let projectTitle = null
+  let foundSectionList = false
 
   for (let i = 0; i < lines.length; i++) {
     const originalLine = lines[i]
     const trimmedLine = originalLine.trim()
 
-    console.log(`Processing line ${i + 1}: "${originalLine}" (trimmed: "${trimmedLine}")`)
+    // Extract project_title: first # line before section list starts
+    if (!foundSectionList && trimmedLine.startsWith('#')) {
+      projectTitle = trimmedLine.replace(/^#+\s*/, '')
+      continue
+    }
 
     // Check for ordered list items with nesting support - use original line to preserve indentation
     const orderedListMatch = originalLine.match(/^(\s*)(.+)$/)
     if (orderedListMatch && trimmedLine.match(/^\d+(?:\.\d+)*\.\s+.+/)) {
+      foundSectionList = true
       console.log(`Found ordered list item: ${orderedListMatch[0]}`)
       const [, indent, content] = orderedListMatch
       inOrderedList = true
@@ -148,7 +155,7 @@ function parseDocumentSections (markdown) {
   }
 
   console.log('Parsed sections:', sections)
-  return sections
+  return { sections, project_title: projectTitle }
 }
 
 module.exports = {

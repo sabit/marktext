@@ -1082,8 +1082,8 @@ export default {
         if (!this.editor) throw new Error('Editor is not available')
         const markdown = this.editor.getMarkdown()
         // Use imported parseDocumentSections function from documentParser.js
-        const sections = parseDocumentSections(markdown)
-        if (sections.length === 0) throw new Error('No ordered lists with file links found in the document. Make sure your document contains ordered lists with file:// links.')
+        const { sections, project_title: projectTitle } = parseDocumentSections(markdown)
+        if (!sections || sections.length === 0) throw new Error('No ordered lists with file links found in the document. Make sure your document contains ordered lists with file:// links.')
         bus.$emit('merge-progress', { progress: 10, message: 'Document sections parsed' })
         // Setup utilities
         const cache = new DocumentCache()
@@ -1116,7 +1116,7 @@ export default {
         console.log('Merging documents with templates from:', templateDirectory)
         // Use imported mergeWithTemplates from pdfProcessing.js
         const draftMode = !!(this.$store.state.preferences && this.$store.state.preferences.draftMode)
-        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory, tools, { draftMode })
+        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory, tools, draftMode, projectTitle)
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
