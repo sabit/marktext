@@ -6,10 +6,10 @@
   "license": "MIT",
   "main": "./dist/electron/main.js",
   "scripts": {
-    "release": "echo 'Please run \"build\" or \"release:{linux,mac,win}\"' && exit 1",
+    "release": "echo 'Please run \"build\" or \"release:{win}\"' && exit 1",
     "release:linux": "node .electron-vue/build.js && electron-builder build --linux --publish onTag",
     "release:mac": "node .electron-vue/build.js && electron-builder build --mac --publish onTag",
-    "release:win": "node .electron-vue/build.js && electron-builder build --win --publish onTag",
+    "release:win": "node .electron-vue/build.js && electron-builder build --win --publish always",
     "build": "node .electron-vue/build.js && electron-builder",
     "build:bin": "node .electron-vue/build.js && electron-builder --dir",
     "build:clean": "cross-env BUILD_TARGET=clean node .electron-vue/build.js",
