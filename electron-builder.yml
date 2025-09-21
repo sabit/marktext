@@ -95,8 +95,6 @@ win:
   target:
   - target: "nsis"
     arch: [x64]
-  - target: "zip"
-    arch: [x64]
   requestedExecutionLevel: "asInvoker"
 nsis:
   artifactName: "marktext-setup.${ext}"
