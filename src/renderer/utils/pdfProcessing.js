@@ -14,7 +14,8 @@ const { convertToPdf } = require('./fileConversion')
  * @param {string} templateDirectory - Directory containing templates
  * @returns {Promise<string>} - Path to the merged PDF
  */
-async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools) {
+async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools, options = {}) {
+  const { draftMode = false } = options
   console.log('mergeWithTemplates called with templateDirectory:', templateDirectory)
 
   const mergedPdfPath = path.join(baseDir, 'merged_document.pdf')
@@ -76,7 +77,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
       currentPageIndex++
     }
 
-    console.log('hai', section.pdfs)
+    // console.log('hai', section.pdfs)
     for (const pdf of section.pdfs) {
       if (!fs.existsSync(pdf.path)) {
         console.warn(`PDF file does not exist, skipping: ${pdf.path}`)
@@ -91,8 +92,8 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
       // Simple approach: copy all pages at once
       const sourcePages = contentDoc.getPages()
       const copiedPages = await finalDoc.copyPages(contentDoc, sourcePages.map((_, i) => i))
-      console.log(`Copied ${copiedPages.length} pages from ${pdf.path}`)
-      console.log('hai2', pdf)
+      // console.log(`Copied ${copiedPages.length} pages from ${pdf.path}`)
+      // console.log('hai2', pdf)
       // Add the copied pages to the final document
       for (const copiedPage of copiedPages) {
         // Create a new blank A4 page to draw onto. This gives us a clean canvas.
@@ -136,8 +137,10 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools)
           newPage.drawPage(embeddedPage)
         }
 
-        // 2. Now draw the overlay on the newly created and drawn-upon page.
-        await drawOverlay(newPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
+        // 2. Now draw the overlay on the newly created and drawn-upon page unless draft mode is enabled.
+        if (!draftMode) {
+          await drawOverlay(newPage, tools, section.title, currentPageIndex, totalPages, nestedSections, false, templateDirectory)
+        }
         currentPageIndex++
       }
 

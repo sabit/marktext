@@ -38,32 +38,22 @@
         >
           <span class="text-center-vertical">&#9776;</span>
         </div>
+
+        <!-- Draft Mode Toggle (Bool) -->
         <el-tooltip
-          v-if="wordCount"
           class="item"
-          :content="`${wordCount[show]} ${HASH[show].full + (wordCount[show] > 1 ? 's' : '')}`"
+          content="Draft Mode (disable overlays)"
           placement="bottom-end"
         >
-          <div slot="content">
-            <div class="title-item">
-              <span class="front">Words:</span><span class="text">{{wordCount['word']}}</span>
-            </div>
-            <div class="title-item">
-              <span class="front">Characters:</span><span class="text">{{wordCount['character']}}</span>
-            </div>
-            <div class="title-item">
-              <span class="front">Paragraphs:</span><span class="text">{{wordCount['paragraph']}}</span>
-            </div>
-          </div>
-          <div
-            v-if="wordCount"
-            class="word-count"
-            :class="[{ 'title-no-drag': platform !== 'darwin' }]"
-            @click.stop="handleWordClick"
-          >
-            <span class="text-center-vertical">{{ `${HASH[show].short} ${wordCount[show]}` }}</span>
+          <div class="titlebar-bool title-no-drag">
+            <Bool
+              description="Draft"
+              :bool="isDraftMode"
+              :onChange="onDraftChange"
+            />
           </div>
         </el-tooltip>
+
         <!-- Merge Progress Indicator -->
         <el-tooltip
           v-if="mergeInProgress"
@@ -115,14 +105,17 @@
 </template>
 
 <script>
-import { ipcRenderer } from 'electron'
-import { getCurrentWindow, Menu as RemoteMenu } from '@electron/remote'
-import { mapState } from 'vuex'
-import { minimizePath, restorePath, maximizePath, closePath } from '../../assets/window-controls.js'
-import { PATH_SEPARATOR } from '../../config'
+import bus from '@/bus'
+import Bool from '@/prefComponents/common/bool'
 import { isOsx } from '@/util'
+import { getCurrentWindow, Menu as RemoteMenu } from '@electron/remote'
+import { ipcRenderer } from 'electron'
+import { mapState } from 'vuex'
+import { closePath, maximizePath, minimizePath, restorePath } from '../../assets/window-controls.js'
+import { PATH_SEPARATOR } from '../../config'
 
 export default {
+  components: { Bool },
   data () {
     this.isOsx = isOsx
     this.HASH = {
@@ -181,6 +174,9 @@ export default {
       titleBarStyle: state => state.preferences.titleBarStyle,
       showTabBar: state => state.layout.showTabBar
     }),
+    isDraftMode () {
+      return this.$store.state.preferences.draftMode === true
+    },
     paths () {
       if (!this.pathname) return []
       const pathnameToken = this.pathname.split(PATH_SEPARATOR).filter(i => i)
@@ -227,6 +223,13 @@ export default {
     }
   },
   methods: {
+    onDraftChange (value) {
+      const nextValue = !!value
+      // Persist and broadcast
+      this.$store.dispatch('SET_SINGLE_PREFERENCE', { type: 'draftMode', value: nextValue })
+      this.$store.commit('SET_USER_PREFERENCE', { draftMode: nextValue })
+      bus.$emit('toggle-draft-mode', nextValue)
+    },
     handleWordClick () {
       const ITEMS = ['word', 'paragraph', 'character', 'all']
       const len = ITEMS.length
@@ -509,6 +512,27 @@ export default {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+</style>
+
+<style scoped>
+/* Compact the Bool switch in the title bar */
+.titlebar-bool .pref-switch-item {
+  margin: 0;
+  padding: 0 4px;
+  min-height: unset;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+.titlebar-bool .pref-switch-item .description {
+  margin-right: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.titlebar-bool .el-switch {
+  vertical-align: middle;
+}
 </style>
 
 <style>

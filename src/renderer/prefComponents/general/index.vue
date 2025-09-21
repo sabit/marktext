@@ -119,19 +119,19 @@
 </template>
 
 <script>
+import { isOsx } from '@/util'
 import { mapState } from 'vuex'
+import Bool from '../common/bool'
 import Compound from '../common/compound'
 import Range from '../common/range'
 import CurSelect from '../common/select'
-import Bool from '../common/bool'
 import Separator from '../common/separator'
-import { isOsx } from '@/util'
 
 import {
-  titleBarStyleOptions,
-  zoomOptions,
   fileSortByOptions,
-  languageOptions
+  languageOptions,
+  titleBarStyleOptions,
+  zoomOptions
 } from './config'
 
 export default {

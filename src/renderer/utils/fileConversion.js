@@ -42,8 +42,8 @@ function findConversionTool (filePath, tools) {
   const localPath = convertFileUrlToPath(filePath)
   const ext = path.extname(localPath).toLowerCase().slice(1)
 
-  console.log(`Looking for conversion tool for extension: '${ext}'`)
-  console.log(`Available tools: ${tools}`)
+  // console.log(`Looking for conversion tool for extension: '${ext}'`)
+  // console.log(`Available tools: ${tools}`)
 
   if (!Array.isArray(tools)) {
     console.error('Tools is not an array:', tools)
@@ -53,7 +53,7 @@ function findConversionTool (filePath, tools) {
   for (const tool of tools) {
     console.log(`Checking tool: ${tool.name}, enabled: ${tool.enabled}, extensions: ${tool.extensions}`)
     if (tool.enabled && tool.extensions.includes(ext)) {
-      console.log(`Found matching tool: ${tool.name}`)
+      // console.log(`Found matching tool: ${tool.name}`)
       return tool
     }
   }
@@ -85,7 +85,7 @@ async function convertToPdf (inputPath, tool, outputDir, outDir) {
   const normalizedToolPath = path.resolve(tool.path).replace(/\\/g, '/')
 
   // console.log(`Converting ${filePath} to ${outputPath}`)
-  console.log(`Using tool: ${tool.name}`)
+  // console.log(`Using tool: ${tool.name}`)
   // console.log(`Original tool path: ${tool.path}`)
   // console.log(`Normalized tool path: ${normalizedToolPath}`)
   // console.log(`Tool arguments template: ${tool.arguments}`)

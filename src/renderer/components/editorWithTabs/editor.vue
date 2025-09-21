@@ -90,9 +90,6 @@ import { moveImageToFolder, moveToRelativeFolder, uploadImage } from '@/util/fil
 import { getCssForOptions, getHtmlToc } from '@/util/pdf'
 import { addCommonStyle, setEditorWidth } from '@/util/theme'
 import { isChildOfDirectory } from 'common/filesystem/paths'
-import { mergeWithTemplates } from '../../utils/pdfProcessing'
-import { convertFileUrlToPath, findConversionTool, convertToPdf } from '../../utils/fileConversion'
-import { parseDocumentSections } from '../../utils/documentParser'
 import Muya from 'muya/lib'
 import CodePicker from 'muya/lib/ui/codePicker'
 import EmojiPicker from 'muya/lib/ui/emojiPicker'
@@ -107,6 +104,9 @@ import QuickInsert from 'muya/lib/ui/quickInsert'
 import TablePicker from 'muya/lib/ui/tablePicker'
 import TableBarTools from 'muya/lib/ui/tableTools'
 import Transformer from 'muya/lib/ui/transformer'
+import { parseDocumentSections } from '../../utils/documentParser'
+import { convertFileUrlToPath, convertToPdf, findConversionTool } from '../../utils/fileConversion'
+import { mergeWithTemplates } from '../../utils/pdfProcessing'
 import Search from '../search'
 
 import '@/assets/themes/codemirror/one-dark.css'
@@ -606,6 +606,8 @@ export default {
       bus.$on('switch-spellchecker-language', this.switchSpellcheckLanguage)
       bus.$on('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
       bus.$on('replace-misspelling', this.replaceMisspelling)
+      // Observe draft mode toggles
+      bus.$on('toggle-draft-mode', this.onToggleDraftMode)
       bus.$on('merge-documents', () => {
         this.handleDocumentMerge()
       })
@@ -697,6 +699,13 @@ export default {
     })
   },
   methods: {
+    onToggleDraftMode (enabled) {
+      try {
+        this.$store.commit('SET_USER_PREFERENCE', { draftMode: enabled })
+      } catch (e) {
+        // If mutation is missing, silently ignore.
+      }
+    },
     photoCreatorClick: (url) => {
       shell.openExternal(url)
     },
@@ -1106,7 +1115,8 @@ export default {
         const templateDirectory = this.$store.state.preferences.templateDirectory || ''
         console.log('Merging documents with templates from:', templateDirectory)
         // Use imported mergeWithTemplates from pdfProcessing.js
-        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory, tools)
+        const draftMode = !!(this.$store.state.preferences && this.$store.state.preferences.draftMode)
+        const mergedPdfPath = await mergeWithTemplates(mergeList, baseDir, templateDirectory, tools, { draftMode })
         notice.notify({
           title: 'Document merge completed',
           message: `Merged PDF saved to: ${mergedPdfPath}`,
@@ -1252,6 +1262,7 @@ export default {
   },
 
   beforeDestroy () {
+    bus.$off('toggle-draft-mode', this.onToggleDraftMode)
     bus.$off('file-loaded', this.setMarkdownToEditor)
     bus.$off('invalidate-image-cache', this.handleInvalidateImageCache)
     bus.$off('undo', this.handleUndo)

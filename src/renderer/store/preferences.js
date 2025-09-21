@@ -79,6 +79,9 @@ const state = {
   // Template directory for header/footer overlays
   templateDirectory: '',
 
+  // Draft mode: disable overlays in PDF merge
+  draftMode: false,
+
   // --------------------------------------------------------------------------
 
   // Edit modes of the current window (not part of persistent settings)
