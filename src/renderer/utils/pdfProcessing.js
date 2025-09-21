@@ -40,7 +40,7 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
     }
   }
 
-  console.log(`Will insert ${blankPagesCount} blank pages (one before each main section)`)
+  // console.log(`Will insert ${blankPagesCount} blank pages (one before each main section)`)
   totalPages += blankPagesCount // Add blank pages to total page count
 
   console.log(`Total content pages to merge: ${totalPages}`)
@@ -286,7 +286,7 @@ async function generateTableOfContents (mergeList, finalDoc) {
         }
 
         const subPageInfo = {
-          title: subSection.title,
+          title: subSection.title.trim(),
           isMain: false,
           startPage: currentPage,
           contentPage: currentPage,
@@ -389,7 +389,7 @@ async function generateTableOfContents (mergeList, finalDoc) {
     console.log(`Display page number: ${displayPageNumber}, Link target page: ${linkPageNumber}`)
 
     tocEntries.push({
-      title: section.title,
+      title: section.title.trim(),
       pageNumber: displayPageNumber, // For displaying in TOC
       linkPageNumber: linkPageNumber, // For link targets (skips blank pages)
       level: level,
@@ -531,7 +531,7 @@ async function generateTableOfContents (mergeList, finalDoc) {
     }
 
     return {
-      title: section.title,
+      title: section.title.trim(),
       isMain: pageInfo.isMain,
       startPage: pageInfo.startPage,
       endPage: pageInfo.endPage,

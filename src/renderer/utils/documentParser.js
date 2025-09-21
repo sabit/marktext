@@ -104,26 +104,29 @@ function parseDocumentSections (markdown) {
         const formattedNumber = nestingLevel === 0 ? `${nestedNumber}.` : nestedNumber
         console.log(`Formatting section number: nestingLevel=${nestingLevel}, raw=${nestedNumber}, formatted=${formattedNumber}`)
         currentSection = {
-          title: `${formattedNumber} ${cleanContent}`,
+          title: `${formattedNumber} ${cleanContent.trim()}`,
           docs: []
         }
 
         // Log the created section title for debugging
         console.log(`Created section with title: "${currentSection.title}"`)
 
-        // Check for file links in the original content
-        const fileLinkMatch = content.match(/\[([^\]]+)\]\((file:\/\/[^)]+)\)/)
-        if (fileLinkMatch) {
-          const linkText = fileLinkMatch[1]
-          const fileUrl = fileLinkMatch[2]
-          const fitToPage = linkText.includes('🔍')
-          if (fitToPage) {
-            console.log(`Found file link: text="${linkText}", url="${fileUrl}", fitToPage=${fitToPage}`)
+        // Match all file links in the content
+        const fileLinkRegex = /\[([^\]]+)\]\((file:\/\/[^)]+)\)/g
+        const fileLinks = Array.from(content.matchAll(fileLinkRegex))
+        if (fileLinks.length > 0) {
+          for (const match of fileLinks) {
+            const linkText = match[1]
+            const fileUrl = match[2]
+            const fitToPage = linkText.includes('🔍')
+            if (fitToPage) {
+              console.log(`Found file link: text="${linkText}", url="${fileUrl}", fitToPage=${fitToPage}`)
+            }
+            currentSection.docs.push({
+              url: fileUrl,
+              fitToPage: fitToPage
+            })
           }
-          currentSection.docs.push({
-            url: fileUrl,
-            fitToPage: fitToPage
-          })
         } else {
           // Only throw an error if it's a nested item (not a main section)
           if (nestingLevel > 0) {
