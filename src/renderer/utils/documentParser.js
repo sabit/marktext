@@ -118,8 +118,11 @@ function parseDocumentSections (markdown) {
             fitToPage: fitToPage
           })
         } else {
-          // Ordered list item without file link - show error as per requirements
-          throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
+          // Only throw an error if it's a nested item (not a main section)
+          if (nestingLevel > 0) {
+            // Ordered list item without file link - show error as per requirements
+            throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
+          }
         }
       }
     } else {

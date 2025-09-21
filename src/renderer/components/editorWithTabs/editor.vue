@@ -1113,6 +1113,7 @@ export default {
           showConfirm: true,
           time: 0
         })
+        shell.openPath(mergedPdfPath)
       } catch (error) {
         console.error('Document merge failed:', error)
         notice.notify({
