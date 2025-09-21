@@ -1,5 +1,9 @@
 productName: "MarkText"
 appId: "com.github.marktext.marktext"
+publish:
+  provider: github
+  owner: sabit
+  repo: marktext
 
 asar: true
 asarUnpack:
