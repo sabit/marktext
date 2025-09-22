@@ -58,8 +58,8 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
   // Note: bus.$emit calls need to be handled by the component
 
   // Track the current page number in the document (starting after ToC pages)
-  // Content pages always start from page 1
-  let currentPageIndex = tocPageCount
+  // Content pages always start from page labeled 1
+  let currentPageIndex = 1
 
   for (const section of mergeList) {
     console.log(`Processing section: ${section.title}`)
