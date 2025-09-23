@@ -118,7 +118,7 @@ function parseDocumentSections (markdown) {
           for (const match of fileLinks) {
             const linkText = match[1]
             const fileUrl = match[2]
-            const fitToPage = linkText.includes('🔍')
+            const fitToPage = linkText.startsWith('@')
             if (fitToPage) {
               console.log(`Found file link: text="${linkText}", url="${fileUrl}", fitToPage=${fitToPage}`)
             }
