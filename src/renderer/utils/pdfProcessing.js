@@ -151,7 +151,60 @@ async function mergeWithTemplates (mergeList, baseDir, templateDirectory, tools,
   fs.writeFileSync(mergedPdfPath, mergedBytes)
 
   console.log(`Merged PDF created: ${mergedPdfPath} (Total content pages: ${totalPages})`)
+
+  // Create ZIP of source files with nested structure
+  try {
+    await createSourceZip(mergeList, baseDir)
+  } catch (error) {
+    console.error('Failed to create source files ZIP:', error)
+  }
+
   return mergedPdfPath
+}
+
+/**
+ * Create a ZIP file containing all source PDFs organized in folders matching the section hierarchy
+ * @param {Array} mergeList - List of sections
+ * @param {string} baseDir - Output directory
+ */
+async function createSourceZip (mergeList, baseDir) {
+  console.log('Creating source files ZIP...')
+  const zip = new PizZip()
+  const activeSections = []
+
+  for (const section of mergeList) {
+    // Determine level based on section numbering (e.g. "1.", "1.1")
+    // "1. Title" -> level 0
+    // "1.1 Title" -> level 1
+    const numberMatch = section.title.match(/^(\d+(?:\.\d+)*)\.?\s+/)
+    const level = numberMatch ? numberMatch[1].split('.').length - 1 : 0
+
+    // Sanitize title for use as folder name
+    const safeTitle = section.title.replace(/[\\/:*?"<>|]/g, '_').trim()
+
+    // Update stack of active sections to build path
+    activeSections[level] = safeTitle
+    // Trim any deeper levels from previous iterations
+    activeSections.length = level + 1
+
+    // Build folder path using forward slashes for ZIP compatibility
+    const folderPath = activeSections.join('/')
+
+    for (const pdf of section.pdfs) {
+      if (fs.existsSync(pdf.path)) {
+        const fileName = path.basename(pdf.path)
+        const content = fs.readFileSync(pdf.path)
+        // Add file to zip with nested path
+        zip.file(`${folderPath}/${fileName}`, content)
+      }
+    }
+  }
+
+  const content = zip.generate({ type: 'nodebuffer' })
+  const zipPath = path.join(baseDir, 'source_files.zip')
+  fs.writeFileSync(zipPath, content)
+  console.log(`Source files ZIP created at: ${zipPath}`)
+  return zipPath
 }
 
 async function drawOverlay (page, tools, sectionTitle, pageNumber, totalPages, nestedSections, isSeparator = false, templateDirectory, projectTitle = '') {
@@ -560,5 +613,6 @@ async function generateTableOfContents (mergeList, finalDoc) {
 
 module.exports = {
   mergeWithTemplates,
-  generateTableOfContents
+  generateTableOfContents,
+  createSourceZip
 }

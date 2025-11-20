@@ -106,7 +106,7 @@ import TableBarTools from 'muya/lib/ui/tableTools'
 import Transformer from 'muya/lib/ui/transformer'
 import { parseDocumentSections } from '../../utils/documentParser'
 import { convertFileUrlToPath, convertToPdf, findConversionTool } from '../../utils/fileConversion'
-import { mergeWithTemplates } from '../../utils/pdfProcessing'
+import { mergeWithTemplates, createSourceZip } from '../../utils/pdfProcessing'
 import Search from '../search'
 
 import '@/assets/themes/codemirror/one-dark.css'
@@ -610,6 +610,10 @@ export default {
       bus.$on('toggle-draft-mode', this.onToggleDraftMode)
       bus.$on('merge-documents', () => {
         this.handleDocumentMerge()
+      })
+      bus.$on('export-source-zip', () => {
+        console.log('Editor component received export-source-zip event')
+        this.handleExportSourceZip()
       })
 
       this.editor.on('change', changes => {
@@ -1138,6 +1142,79 @@ export default {
       }
     },
 
+    async handleExportSourceZip () {
+      // Check if document is saved
+      const { currentFile } = this
+      if (!currentFile.isSaved) {
+        notice.notify({
+          title: 'Document Not Saved',
+          type: 'warning',
+          message: 'Please save the document before exporting source ZIP.',
+          time: 0
+        })
+        return
+      }
+      bus.$emit('merge-started')
+      if (this.editor) this.editor.setOptions({ readOnly: true })
+      const DocumentCache = require('../../utils/DocumentCache')
+      const ProgressManager = require('../../utils/ProgressManager')
+      const { processSections } = require('../../utils/mergeHelpers')
+      try {
+        if (!this.editor) throw new Error('Editor is not available')
+        const markdown = this.editor.getMarkdown()
+        const { sections } = parseDocumentSections(markdown)
+        if (!sections || sections.length === 0) throw new Error('No ordered lists with file links found in the document.')
+        bus.$emit('merge-progress', { progress: 10, message: 'Document sections parsed' })
+        // Setup utilities
+        const cache = new DocumentCache()
+        const progressManager = new ProgressManager()
+        const tools = {
+          findConversionTool,
+          convertToPdf,
+          conversionTools: this.$store.state.preferences.conversionTools || [],
+          convertFileUrlToPath
+        }
+
+        const basePath = currentFile.pathname
+        const path = require('path')
+        const baseDir = path.dirname(basePath)
+        const outputDir = path.join(baseDir, 'cache')
+        if (!require('fs').existsSync(outputDir)) {
+          require('fs').mkdirSync(outputDir, { recursive: true })
+        }
+
+        const mergeList = await processSections(
+          sections,
+          tools,
+          outputDir,
+          cache,
+          progressManager,
+          bus
+        )
+
+        const zipPath = await createSourceZip(mergeList, baseDir)
+
+        notice.notify({
+          title: 'Source ZIP Exported',
+          message: `Source files ZIP created at: ${zipPath}`,
+          showConfirm: true,
+          time: 0
+        })
+        shell.showItemInFolder(zipPath)
+      } catch (error) {
+        console.error('Source ZIP export failed:', error)
+        notice.notify({
+          title: 'Export Failed',
+          type: 'error',
+          message: error.message || 'An unexpected error occurred.',
+          time: 0
+        })
+      } finally {
+        if (this.editor) this.editor.setOptions({ readOnly: false })
+        bus.$emit('merge-completed')
+      }
+    },
+
     // parseDocumentSections has been moved to utils/documentParser.js
 
     // convertAndMergeDocuments is now handled by processSections and mergeWithTemplates
@@ -1295,6 +1372,7 @@ export default {
     bus.$off('open-command-spellchecker-switch-language', this.openSpellcheckerLanguageCommand)
     bus.$off('replace-misspelling', this.replaceMisspelling)
     bus.$off('merge-documents', this.handleDocumentMerge)
+    bus.$off('export-source-zip', this.handleExportSourceZip)
 
     document.removeEventListener('keyup', this.keyup)
 

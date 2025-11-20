@@ -134,6 +134,12 @@ export default function (keybindings, userPreference, recentlyUsedFiles) {
         click (menuItem, browserWindow) {
           actions.mergeDocuments(browserWindow)
         }
+      }, {
+        label: 'Export Source ZIP',
+        click (menuItem, browserWindow) {
+          console.log('Export Source ZIP menu item clicked')
+          actions.exportSourceZip(browserWindow)
+        }
       }
     ]
   }, {

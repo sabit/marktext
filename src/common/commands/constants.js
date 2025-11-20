@@ -25,6 +25,7 @@ const COMMANDS = Object.freeze({
   FILE_EXPORT_FILE: 'file.export-file',
   FILE_IMPORT_FILE: 'file.import-file',
   FILE_MERGE_DOCUMENTS: 'file.merge-documents',
+  FILE_EXPORT_SOURCE_ZIP: 'file.export-source-zip',
   FILE_MOVE_FILE: 'file.move-file',
   FILE_NEW_FILE: 'file.new-window',
   FILE_NEW_TAB: 'file.new-tab',

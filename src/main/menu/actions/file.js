@@ -560,6 +560,18 @@ export const mergeDocuments = win => {
   }
 }
 
+export const exportSourceZip = win => {
+  if (!win) {
+    win = BrowserWindow.getFocusedWindow()
+  }
+  if (win && win.webContents) {
+    console.log('Sending mt::export-source-zip to renderer')
+    win.webContents.send('mt::export-source-zip')
+  } else {
+    console.error('exportSourceZip: No window found')
+  }
+}
+
 export const openFile = async win => {
   const { filePaths } = await dialog.showOpenDialog(win, {
     properties: ['openFile', 'multiSelections'],
@@ -660,6 +672,7 @@ export const loadFileCommands = commandManager => {
   commandManager.add(COMMANDS.FILE_EXPORT_FILE, exportFile)
   commandManager.add(COMMANDS.FILE_IMPORT_FILE, importFile)
   commandManager.add(COMMANDS.FILE_MERGE_DOCUMENTS, mergeDocuments)
+  commandManager.add(COMMANDS.FILE_EXPORT_SOURCE_ZIP, exportSourceZip)
   commandManager.add(COMMANDS.FILE_MOVE_FILE, moveTo)
   commandManager.add(COMMANDS.FILE_NEW_FILE, newEditorWindow)
   commandManager.add(COMMANDS.FILE_NEW_TAB, newBlankTab)
