@@ -128,8 +128,29 @@ function parseDocumentSections (markdown) {
             })
           }
         } else {
+          // Check if there are sublevels for level 0 to determine if it's a leaf
+          let hasSubLevel = false
+          if (nestingLevel === 0) {
+            for (let j = i + 1; j < lines.length; j++) {
+              const nextLine = lines[j]
+              const nextTrimmed = nextLine.trim()
+              if (nextTrimmed === '') continue
+
+              if (nextTrimmed.match(/^\d+(?:\.\d+)*\.\s+.+/)) {
+                const nextIndentMatch = nextLine.match(/^(\s*)/)
+                const nextIndent = nextIndentMatch ? nextIndentMatch[1].length : 0
+                const nextLevel = Math.floor(nextIndent / 3)
+                if (nextLevel > nestingLevel) {
+                  hasSubLevel = true
+                }
+              }
+              break
+            }
+          }
+
           // Only throw an error if it's a nested item (not a main section)
-          if (nestingLevel > 0) {
+          // OR if it is a main section without children (leaf node)
+          if (nestingLevel > 0 || !hasSubLevel) {
             // Ordered list item without file link - show error as per requirements
             throw new Error(`Section "${nestedNumber} ${cleanContent}" has missing document link`)
           }

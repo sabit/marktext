@@ -26,24 +26,31 @@
           </div>
 
           <div class="template-status">
-            <div v-if="localTemplateDirectory" class="status-item">
+            <div v-if="templateDirectory" class="status-item">
               <span class="status-label">Directory:</span>
               <span :class="['status-value', { 'status-valid': templateDirectoryExists, 'status-invalid': !templateDirectoryExists }]">
                 {{ templateDirectoryExists ? 'Found' : 'Not Found' }}
               </span>
             </div>
 
-            <div v-if="localTemplateDirectory && templateDirectoryExists" class="status-item">
+            <div v-if="templateDirectory && templateDirectoryExists" class="status-item">
               <span class="status-label">Portrait Template:</span>
               <span :class="['status-value', { 'status-valid': portraitTemplateExists, 'status-invalid': !portraitTemplateExists }]">
                 {{ portraitTemplateExists ? 'Found' : 'Not Found' }}
               </span>
             </div>
 
-            <div v-if="localTemplateDirectory && templateDirectoryExists" class="status-item">
+            <div v-if="templateDirectory && templateDirectoryExists" class="status-item">
               <span class="status-label">Landscape Template:</span>
               <span :class="['status-value', { 'status-valid': landscapeTemplateExists, 'status-invalid': !landscapeTemplateExists }]">
                 {{ landscapeTemplateExists ? 'Found' : 'Not Found' }}
+              </span>
+            </div>
+
+            <div v-if="templateDirectory && templateDirectoryExists" class="status-item">
+              <span class="status-label">Separator Template:</span>
+              <span :class="['status-value', { 'status-valid': separatorTemplateExists, 'status-invalid': !separatorTemplateExists }]">
+                {{ separatorTemplateExists ? 'Found' : 'Not Found' }}
               </span>
             </div>
           </div>
@@ -65,6 +72,7 @@
 
           <p><strong>Template Placeholders:</strong></p>
           <ul>
+            <li><code>{project_title}</code> - Will be replaced with the project title</li>
             <li><code>{page_title}</code> - Will be replaced with the current page title</li>
             <li><code>{page_number}</code> - Will be replaced with the current page number</li>
             <li><code>{page_total}</code> - Will be replaced with the total number of pages</li>
@@ -101,13 +109,18 @@ export default {
     },
     portraitTemplateExists () {
       if (!this.templateDirectoryExists) return false
-      const portraitPath = path.join(this.templateDirectory, 'header_footer_portrait.docx')
+      const portraitPath = path.join(this.templateDirectory, 'portrait.docx')
       return fs.existsSync(portraitPath)
     },
     landscapeTemplateExists () {
       if (!this.templateDirectoryExists) return false
-      const landscapePath = path.join(this.templateDirectory, 'header_footer_landscape.docx')
+      const landscapePath = path.join(this.templateDirectory, 'landscape.docx')
       return fs.existsSync(landscapePath)
+    },
+    separatorTemplateExists () {
+      if (!this.templateDirectoryExists) return false
+      const separatorPath = path.join(this.templateDirectory, 'separator_template.docx')
+      return fs.existsSync(separatorPath)
     }
   },
   watch: {
